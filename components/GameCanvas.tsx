@@ -163,7 +163,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                  radius: 50,
                  type: 'BOSS_ZOMBIE',
                  color: '#805AD5',
-                 emoji: '🧟',
+                 emoji: '🧟‍♂️',
                  hp: bossHp,
                  maxHp: bossHp,
                  speed: 2,
@@ -331,7 +331,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              const spawnY = state.player.y + Math.sin(angle) * dist;
              const roll = Math.random();
 
-             // Swarm Zombies (20% chance after 30s)
+             // Swarm Rats (20% chance after 30s)
              if (state.time > 1800 && roll < 0.2) {
                  for (let i=0; i < 5; i++) {
                      state.enemies.push({
@@ -341,6 +341,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                          radius: 8,
                          type: 'SWARM_ZOMBIE',
                          color: '#E53E3E',
+                         emoji: '🐀',
                          hp: 10 + (state.time / 600) * 2,
                          maxHp: 10 + (state.time / 600) * 2,
                          speed: 2.5 + Math.random(),
@@ -350,15 +351,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                      });
                  }
              } 
-             // Shield Zombies (15% chance after 60s)
+             // Shield Robots (15% chance after 60s)
              else if (state.time > 3600 && roll > 0.85) {
                  state.enemies.push({
                      id: Math.random().toString(),
                      x: spawnX,
                      y: spawnY,
                      radius: 16,
-                     type: 'SHIELD_ZOMBIE',
+                     type: 'SHIELD_ZOMBIE', // Treated as Robot
                      color: '#2B6CB0',
+                     emoji: '🤖',
                      hp: 40 + (state.time / 600) * 8,
                      maxHp: 40 + (state.time / 600) * 8,
                      shieldHp: 50 + (state.time / 600) * 5,
@@ -378,6 +380,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                      radius: 12,
                      type: 'ZOMBIE',
                      color: COLORS.zombie,
+                     emoji: '🧟',
                      hp: 20 + (state.time / 600) * 5, // scaling HP
                      maxHp: 20 + (state.time / 600) * 5,
                      speed: 1 + Math.random() * 0.5,
@@ -867,7 +870,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             ctx.save();
             // Text
             ctx.fillStyle = '#E9D8FD';
-            ctx.font = 'bold 16px sans-serif';
+            ctx.font = 'bold 16px "Russo One", sans-serif';
             ctx.textAlign = 'center';
             ctx.shadowColor = 'black';
             ctx.shadowBlur = 4;
