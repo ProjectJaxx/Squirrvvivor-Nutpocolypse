@@ -1,0 +1,171 @@
+
+export type AppState = 'MENU' | 'GAME' | 'LEVEL_UP' | 'GAME_OVER' | 'SETTINGS' | 'SAVE_SELECT' | 'PAUSED';
+
+export interface Vector {
+  x: number;
+  y: number;
+}
+
+export type DropKind = 'XP' | 'GOLD' | 'HEALTH_PACK';
+
+export type EntityType = 
+  'PLAYER' | 'ZOMBIE' | 'ROBOT' | 'ALIEN' | 
+  'NUT_SHELL' | 'EXPLODING_ACORN' | 'CROW_FEATHER' | 'DROP' | 'CROW' | 
+  'EXPLOSION' | 'SMOKE' | 'TRAIL' | 'OBSTACLE' | 'FRAGMENT' | 'SPARK' |
+  'BRUTE_ZOMBIE' | 'RUNNER_ZOMBIE' | 'SPITTER_ZOMBIE' | 'VENOM_SPIT' |
+  'SWARM_ZOMBIE' | 'SHIELD_ZOMBIE' |
+  'BOSS_ZOMBIE' | 'BOSS_ROBOT' | 'BOSS_ALIEN' | 'BOSS_MISSILE';
+
+export interface Entity {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  type: EntityType;
+  color: string;
+  emoji?: string;
+}
+
+export interface SquirrelCharacter {
+  id: string;
+  name: string;
+  description: string;
+  hp: number;
+  speed: number;
+  color: string;
+  emoji: string;
+  radius: number;
+  filter?: string;
+}
+
+export interface Player extends Entity {
+  hp: number;
+  maxHp: number;
+  xp: number;
+  level: number;
+  nextLevelXp: number;
+  speed: number;
+  weapons: Weapon[];
+  facing: 'LEFT' | 'RIGHT';
+  characterId?: string;
+  filter?: string;
+}
+
+export interface StatusEffect {
+  type: 'SLOW' | 'BURN';
+  duration: number;
+  magnitude: number;
+}
+
+export interface Enemy extends Entity {
+  hp: number;
+  maxHp: number;
+  speed: number;
+  damage: number;
+  knockback: Vector;
+  statusEffects: StatusEffect[];
+  attackTimer?: number;
+  shieldHp?: number;
+  maxShieldHp?: number;
+}
+
+export interface Projectile extends Entity {
+  velocity: Vector;
+  damage: number;
+  duration: number; // frames to live
+  pierce: number;
+  rotation: number;
+  explodeRadius?: number;
+  hostile?: boolean;
+}
+
+export interface ItemDrop extends Entity {
+  kind: DropKind;
+  value: number;
+}
+
+export interface Particle extends Entity {
+  velocity: Vector;
+  life: number;
+  maxLife: number;
+  scale: number;
+}
+
+export interface FloatingText {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  life: number;
+  color: string;
+  velocity: Vector;
+}
+
+export interface Obstacle extends Entity {
+    width?: number;
+    height?: number;
+    hp: number;
+    maxHp: number;
+    destructible: boolean;
+    rotation: number;
+    material: 'WOOD' | 'STONE' | 'METAL' | 'CRYSTAL' | 'FLESH';
+}
+
+export type WeaponType = 'NUT_THROW' | 'CROW_AURA' | 'ACORN_CANNON' | 'FEATHER_STORM';
+
+export interface Weapon {
+  type: WeaponType;
+  level: number;
+  cooldown: number;
+  cooldownTimer: number;
+  damage: number;
+  area: number; // size or range
+  speed: number; // projectile speed
+  amount: number; // projectiles per shot
+  duration?: number;
+}
+
+export interface Upgrade {
+  id: string;
+  name: string;
+  description: string;
+  rarity: 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+  icon: string;
+  apply: (player: Player) => void;
+}
+
+export type StageDuration = 'STANDARD' | 'LONG' | 'EPIC';
+
+export interface GameState {
+  player: Player;
+  enemies: Enemy[];
+  projectiles: Projectile[];
+  drops: ItemDrop[];
+  particles: Particle[];
+  texts: FloatingText[];
+  obstacles: Obstacle[];
+  score: number;
+  kills: number; 
+  time: number; // frames
+  wave: number;
+  bossWarningTimer: number;
+  mapBounds: { minX: number, maxX: number, minY: number, maxY: number };
+  biome: 'PARK' | 'PARKING_LOT' | 'MARS';
+}
+
+export interface PlayerStats {
+  totalKills: number;
+  totalTimePlayed: number; // seconds
+  totalGamesPlayed: number;
+  maxWaveReached: number;
+  highestScore: number;
+  totalDeaths: number;
+}
+
+export interface SaveSlot {
+  id: string;
+  name: string;
+  lastPlayed: number;
+  created: number;
+  stats: PlayerStats;
+}
