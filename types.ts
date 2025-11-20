@@ -49,6 +49,7 @@ export interface Player extends Entity {
   facing: 'LEFT' | 'RIGHT';
   characterId?: string;
   filter?: string;
+  xpFlashTimer?: number;
 }
 
 export interface StatusEffect {
@@ -67,6 +68,7 @@ export interface Enemy extends Entity {
   attackTimer?: number;
   shieldHp?: number;
   maxShieldHp?: number;
+  hitFlashTimer?: number;
 }
 
 export interface Projectile extends Entity {
@@ -109,6 +111,7 @@ export interface Obstacle extends Entity {
     destructible: boolean;
     rotation: number;
     material: 'WOOD' | 'STONE' | 'METAL' | 'CRYSTAL' | 'FLESH';
+    isCover?: boolean;
 }
 
 export type WeaponType = 'NUT_THROW' | 'CROW_AURA' | 'ACORN_CANNON' | 'FEATHER_STORM';
@@ -120,7 +123,7 @@ export interface Weapon {
   cooldownTimer: number;
   damage: number;
   area: number; // size or range
-  speed: number; // projectile speed
+  speed: number; // projectiles speed
   amount: number; // projectiles per shot
   duration?: number;
 }

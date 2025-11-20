@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef } from 'react';
-import { GameState, Entity, Upgrade, SquirrelCharacter, StageDuration, Obstacle, Enemy } from '../types';
+import { GameState, Entity, Upgrade, SquirrelCharacter, StageDuration, Obstacle, Enemy, Projectile, Player } from '../types';
 import { INITIAL_GAME_STATE, CANVAS_WIDTH, COLORS, BIOME_CONFIG } from '../constants';
 import { playSound } from '../services/soundService';
 
@@ -18,13 +18,55 @@ const getDistance = (a: {x: number, y: number}, b: {x: number, y: number}) => {
     return Math.hypot(b.x - a.x, b.y - a.y);
 };
 
+// Helper for segment vs circle collision (finding closest point on segment)
+const getClosestPointOnSegment = (p: {x: number, y: number}, a: {x: number, y: number}, b: {x: number, y: number}) => {
+    const pax = p.x - a.x;
+    const pay = p.y - a.y;
+    const bax = b.x - a.x;
+    const bay = b.y - a.y;
+    const lenSq = bax*bax + bay*bay;
+    if (lenSq === 0) return { x: a.x, y: a.y, t: 0 };
+    const t = Math.max(0, Math.min(1, (pax * bax + pay * bay) / lenSq));
+    return {
+        x: a.x + t * bax,
+        y: a.y + t * bay,
+        t // 0..1 factor along the segment
+    };
+};
+
 const OBSTACLE_TEMPLATES = {
-    TREE: { hp: 100, destructible: false, emoji: '🌳', radius: 30, material: 'WOOD' },
-    ROCK: { hp: 200, destructible: false, emoji: '🪨', radius: 25, material: 'STONE' },
-    BENCH: { hp: 50, destructible: true, emoji: '🪑', radius: 15, material: 'WOOD' },
-    CAR: { hp: 150, destructible: true, emoji: '🚗', radius: 35, material: 'METAL' },
-    HYDRANT: { hp: 80, destructible: true, emoji: '🧯', radius: 10, material: 'METAL' },
-    CRYSTAL: { hp: 60, destructible: true, emoji: '💎', radius: 15, material: 'CRYSTAL' }
+    // PARK
+    TREE: { hp: 200, destructible: false, emoji: '🌳', radius: 30, material: 'WOOD', isCover: false },
+    PINE: { hp: 180, destructible: false, emoji: '🌲', radius: 28, material: 'WOOD', isCover: false },
+    ROCK: { hp: 500, destructible: false, emoji: '🪨', radius: 25, material: 'STONE', isCover: true },
+    BENCH: { hp: 60, destructible: true, emoji: '🪑', radius: 15, material: 'WOOD', isCover: false },
+    FOUNTAIN: { hp: 800, destructible: false, emoji: '⛲', radius: 35, material: 'STONE', isCover: true },
+    STATUE: { hp: 400, destructible: true, emoji: '🗿', radius: 20, material: 'STONE', isCover: true },
+    BUSH: { hp: 30, destructible: true, emoji: '🌿', radius: 18, material: 'WOOD', isCover: false },
+    LAMP_POST: { hp: 150, destructible: false, emoji: '💡', radius: 10, material: 'METAL', isCover: false },
+    PICNIC_TABLE: { hp: 100, destructible: true, emoji: '🧺', radius: 25, material: 'WOOD', isCover: true },
+
+    // PARKING LOT
+    CAR: { hp: 300, destructible: true, emoji: '🚗', radius: 35, material: 'METAL', isCover: true },
+    BUS: { hp: 600, destructible: true, emoji: '🚌', radius: 50, material: 'METAL', isCover: true },
+    HYDRANT: { hp: 100, destructible: true, emoji: '🧯', radius: 10, material: 'METAL', isCover: false },
+    CONE: { hp: 20, destructible: true, emoji: '⚠️', radius: 10, material: 'WOOD', isCover: false }, // Wood fragments for plastic
+    BARRIER: { hp: 250, destructible: true, emoji: '🚧', radius: 25, material: 'METAL', isCover: true },
+    TRASH: { hp: 80, destructible: true, emoji: '🗑️', radius: 15, material: 'METAL', isCover: false },
+    TIRE_STACK: { hp: 150, destructible: true, emoji: '⚫', radius: 20, material: 'WOOD', isCover: true }, // Treated as wood/rubber
+    SHOPPING_CART: { hp: 40, destructible: true, emoji: '🛒', radius: 15, material: 'METAL', isCover: false },
+
+    // MARS
+    MARS_ROCK: { hp: 600, destructible: false, emoji: '🪨', radius: 30, material: 'STONE', isCover: true },
+    CRYSTAL: { hp: 80, destructible: true, emoji: '💎', radius: 15, material: 'CRYSTAL', isCover: true },
+    ALIEN_PLANT: { hp: 120, destructible: true, emoji: '🌵', radius: 20, material: 'FLESH', isCover: false },
+    ROVER: { hp: 350, destructible: true, emoji: '🛰️', radius: 30, material: 'METAL', isCover: true },
+    MONOLITH: { hp: 9999, destructible: false, emoji: '⬛', radius: 25, material: 'STONE', isCover: true },
+    SOLAR_PANEL: { hp: 80, destructible: true, emoji: '⚡', radius: 25, material: 'METAL', isCover: true },
+    CRATER_RIM: { hp: 500, destructible: false, emoji: '🌋', radius: 30, material: 'STONE', isCover: true },
+    
+    // GENERIC
+    DEBRIS: { hp: 150, destructible: true, emoji: '🏚️', radius: 25, material: 'STONE', isCover: true }
 };
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -66,18 +108,37 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const roll = Math.random();
             
             if (biome === 'PARK') {
-                if (roll > 0.7) template = OBSTACLE_TEMPLATES.BENCH;
-                else if (roll > 0.9) template = OBSTACLE_TEMPLATES.ROCK;
+                if (roll < 0.25) template = OBSTACLE_TEMPLATES.TREE;
+                else if (roll < 0.4) template = OBSTACLE_TEMPLATES.PINE;
+                else if (roll < 0.5) template = OBSTACLE_TEMPLATES.BENCH;
+                else if (roll < 0.6) template = OBSTACLE_TEMPLATES.ROCK;
+                else if (roll < 0.7) template = OBSTACLE_TEMPLATES.STATUE;
+                else if (roll < 0.75) template = OBSTACLE_TEMPLATES.FOUNTAIN;
+                else if (roll < 0.85) template = OBSTACLE_TEMPLATES.PICNIC_TABLE;
+                else if (roll < 0.9) template = OBSTACLE_TEMPLATES.LAMP_POST;
+                else template = OBSTACLE_TEMPLATES.BUSH;
             } else if (biome === 'PARKING_LOT') {
-                template = OBSTACLE_TEMPLATES.CAR;
-                if (roll > 0.8) template = OBSTACLE_TEMPLATES.HYDRANT;
+                if (roll < 0.3) template = OBSTACLE_TEMPLATES.CAR;
+                else if (roll < 0.4) template = OBSTACLE_TEMPLATES.BUS;
+                else if (roll < 0.5) template = OBSTACLE_TEMPLATES.BARRIER;
+                else if (roll < 0.6) template = OBSTACLE_TEMPLATES.CONE;
+                else if (roll < 0.7) template = OBSTACLE_TEMPLATES.TIRE_STACK;
+                else if (roll < 0.8) template = OBSTACLE_TEMPLATES.SHOPPING_CART;
+                else if (roll < 0.9) template = OBSTACLE_TEMPLATES.TRASH;
+                else template = OBSTACLE_TEMPLATES.HYDRANT;
             } else if (biome === 'MARS') {
-                template = OBSTACLE_TEMPLATES.ROCK;
-                if (roll > 0.8) template = OBSTACLE_TEMPLATES.CRYSTAL;
+                if (roll < 0.3) template = OBSTACLE_TEMPLATES.MARS_ROCK;
+                else if (roll < 0.45) template = OBSTACLE_TEMPLATES.CRYSTAL;
+                else if (roll < 0.6) template = OBSTACLE_TEMPLATES.ALIEN_PLANT;
+                else if (roll < 0.7) template = OBSTACLE_TEMPLATES.ROVER;
+                else if (roll < 0.8) template = OBSTACLE_TEMPLATES.SOLAR_PANEL;
+                else if (roll < 0.9) template = OBSTACLE_TEMPLATES.CRATER_RIM;
+                else if (roll < 0.95) template = OBSTACLE_TEMPLATES.MONOLITH;
+                else template = OBSTACLE_TEMPLATES.DEBRIS;
             }
 
             obstacles.push({
-                id: `obs-${i}`,
+                id: `obs-${i}-${Math.random()}`,
                 x, y,
                 radius: template.radius,
                 type: 'OBSTACLE',
@@ -87,7 +148,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 maxHp: template.hp,
                 destructible: template.destructible,
                 rotation: Math.random() * Math.PI * 2,
-                material: template.material as any
+                material: template.material as any,
+                isCover: template.isCover
             });
         }
         return obstacles;
@@ -104,6 +166,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         state.player.emoji = character.emoji;
         state.player.filter = character.filter;
         state.player.weapons[0].cooldownTimer = 0; // Reset weapon cooldown
+        state.player.weapons[0].level = 1; // Reset level
         
         // Reset run state
         state.time = 0;
@@ -119,6 +182,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         state.player.x = 0;
         state.player.y = 0;
         state.obstacles = generateObstacles(state.biome, state.mapBounds);
+        state.player.xpFlashTimer = 0;
     }, [character]);
 
     // Input handling
@@ -216,6 +280,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (paused) return;
         const state = stateRef.current;
         state.time++;
+
+        // Decrease XP Flash Timer
+        if (state.player.xpFlashTimer && state.player.xpFlashTimer > 0) {
+            state.player.xpFlashTimer--;
+        }
 
         // Boss Warning Logic (Every 90 seconds)
         const BOSS_WAVE_INTERVAL = 5400; // 90s at 60fps
@@ -358,11 +427,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     const angle = target 
                         ? Math.atan2(target.y - state.player.y, target.x - state.player.x)
                         : (state.player.facing === 'RIGHT' ? 0 : Math.PI);
-                        
+                    
+                    // Visual Upgrade: Nuts get bigger with level
+                    const nutSize = Math.min(15, 5 + (w.level * 1.5));
+
                     state.projectiles.push({
                         id: Math.random().toString(),
                         x: state.player.x, y: state.player.y,
-                        radius: 5,
+                        radius: nutSize,
                         type: 'NUT_SHELL',
                         color: '#FFD700',
                         velocity: { x: Math.cos(angle) * w.speed, y: Math.sin(angle) * w.speed },
@@ -406,7 +478,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     const radius = 100 + (w.area * 10);
                     
                     // Spawn Crow Particles for visual feedback
-                    for (let k = 0; k < 2; k++) {
+                    // Upgrade: More crows based on level
+                    const crowCount = 2 + Math.floor(w.level / 2);
+                    
+                    for (let k = 0; k < crowCount; k++) {
                         const angle = Math.random() * Math.PI * 2;
                         const dist = radius * (0.8 + Math.random() * 0.2);
                         
@@ -414,7 +489,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                             id: Math.random().toString(),
                             x: state.player.x + Math.cos(angle) * dist,
                             y: state.player.y + Math.sin(angle) * dist,
-                            radius: 8,
+                            radius: 8 + Math.random() * 4,
                             type: 'CROW', 
                             color: '#000',
                             emoji: '🐦‍⬛',
@@ -422,8 +497,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                 x: -Math.sin(angle) * 5, 
                                 y: Math.cos(angle) * 5 
                             },
-                            life: 30,
-                            maxLife: 30,
+                            life: 35, // Slightly longer life for persistence
+                            maxLife: 35,
                             scale: 1
                         });
                     }
@@ -521,21 +596,69 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Enemy Logic
         for (let i = state.enemies.length - 1; i >= 0; i--) {
             const e = state.enemies[i];
-            // Move towards player
-            const angle = Math.atan2(state.player.y - e.y, state.player.x - e.x);
-            
-            let moveX = Math.cos(angle) * e.speed;
-            let moveY = Math.sin(angle) * e.speed;
 
-            // Boids-like separation (prevent stacking)
+            // Decrement flash timer
+            if (e.hitFlashTimer && e.hitFlashTimer > 0) e.hitFlashTimer--;
+            
+            // 1. Goal: Move towards player
+            const angleToPlayer = Math.atan2(state.player.y - e.y, state.player.x - e.x);
+            let moveX = Math.cos(angleToPlayer) * e.speed;
+            let moveY = Math.sin(angleToPlayer) * e.speed;
+
+            // Combined Swarm & Separation Logic
+            let separationX = 0;
+            let separationY = 0;
+            
+            let swarmCount = 0;
+            let swarmCenterX = 0;
+            let swarmCenterY = 0;
+            const flockRadius = 150;
+            
             for (let j = 0; j < state.enemies.length; j++) {
                 if (i === j) continue;
                 const other = state.enemies[j];
-                const d = getDistance(e, other);
-                if (d < e.radius + other.radius) {
-                    moveX += (e.x - other.x) * 0.05;
-                    moveY += (e.y - other.y) * 0.05;
+                const dist = getDistance(e, other);
+
+                // Separation
+                if (dist < e.radius + other.radius) {
+                     separationX += (e.x - other.x);
+                     separationY += (e.y - other.y);
                 }
+                
+                // Flocking Data Collection
+                if (e.type === 'SWARM_ZOMBIE' && other.type === 'SWARM_ZOMBIE' && dist < flockRadius) {
+                    swarmCount++;
+                    swarmCenterX += other.x;
+                    swarmCenterY += other.y;
+                }
+            }
+            
+            // Apply Separation (Smoother logic)
+            const pushStrength = 0.05;
+            moveX += separationX * pushStrength;
+            moveY += separationY * pushStrength;
+
+            // Apply Swarm Behavior (Flocking & Buffs)
+            if (e.type === 'SWARM_ZOMBIE' && swarmCount > 0) {
+                // Cohesion: Steer towards center of the flock
+                swarmCenterX /= swarmCount;
+                swarmCenterY /= swarmCount;
+                const angleToCenter = Math.atan2(swarmCenterY - e.y, swarmCenterX - e.x);
+                
+                // Cohesion strength
+                moveX += Math.cos(angleToCenter) * 0.4;
+                moveY += Math.sin(angleToCenter) * 0.4;
+                
+                // Buff Logic: Enraged state if pack is large enough
+                if (swarmCount >= 3) {
+                     e.color = '#FC8181'; // Brighter Red (Enraged)
+                     moveX *= 1.4; // 40% Speed Buff
+                     moveY *= 1.4;
+                } else {
+                    e.color = '#E53E3E'; // Normal Red
+                }
+            } else if (e.type === 'SWARM_ZOMBIE') {
+                e.color = '#E53E3E'; // Reset if isolated
             }
 
             e.x += moveX;
@@ -566,9 +689,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         duration: 120,
                         pierce: 1,
                         rotation: laserAngle,
-                        hostile: true // IMPORTANT
+                        hostile: true
                     });
                 }
+            }
+
+            // BOSS PARTICLES & AURA
+            if (e.type.startsWith('BOSS')) {
+                 // Random aura particles
+                 if (Math.random() < 0.3) {
+                     const angle = Math.random() * Math.PI * 2;
+                     // Spawn slightly outside radius
+                     const r = e.radius * (1 + Math.random() * 0.5);
+                     state.particles.push({
+                        id: `bp-${Math.random()}`,
+                        x: e.x + Math.cos(angle) * r,
+                        y: e.y + Math.sin(angle) * r,
+                        radius: Math.random() * 3 + 1,
+                        type: 'SPARK',
+                        color: e.color,
+                        velocity: {
+                            x: Math.cos(angle) * 0.5, // drift out slowly
+                            y: -1 - Math.random() // float up
+                        },
+                        life: 40,
+                        maxLife: 40,
+                        scale: 1
+                     });
+                 }
             }
             
             // Simple collision with player
@@ -581,19 +729,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             }
         }
 
-        // Projectile Logic
+        // --- REFINED PROJECTILE LOGIC (Continuous Collision) ---
         for (let i = state.projectiles.length - 1; i >= 0; i--) {
             const p = state.projectiles[i];
-            p.x += p.velocity.x;
-            p.y += p.velocity.y;
-            p.duration--;
             
-            if (p.duration <= 0) {
-                state.projectiles.splice(i, 1);
-                continue;
-            }
-
-            // Explosion Logic check
+            const start = { x: p.x, y: p.y };
+            // If velocity is 0 (e.g. static explosion), use a tiny vector to behave like a point check
+            const moveVec = (p.velocity.x === 0 && p.velocity.y === 0) ? {x:0.1, y:0.1} : p.velocity;
+            const end = { x: start.x + moveVec.x, y: start.y + moveVec.y };
+            const segmentLenSq = moveVec.x * moveVec.x + moveVec.y * moveVec.y;
+            
+            // Explosion Special Handling: Duration check before collision
             if (p.type === 'EXPLODING_ACORN' && p.duration < 5) {
                  // Explode at end of life
                  if (soundEnabled) playSound('EXPLOSION');
@@ -610,148 +756,228 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                      rotation: 0,
                      hostile: false
                  });
-                 // Remove acorn
                  state.projectiles.splice(i, 1);
                  continue;
             }
 
-            // HOSTILE PROJECTILE HIT PLAYER
+            // --- COLLISION DETECTION ---
+            // Gather all potential hits along the path
+            interface HitCandidate {
+                type: 'OBSTACLE' | 'ENEMY' | 'PLAYER';
+                obj: Entity | Player | Enemy | Obstacle;
+                t: number; // factor 0..1
+                distSq: number;
+            }
+            let hits: HitCandidate[] = [];
+
+            // 1. Check Obstacles (Both Hostile and Friendly can hit obstacles)
+            state.obstacles.forEach(obs => {
+                const range = obs.radius + p.radius + Math.sqrt(segmentLenSq);
+                if (getDistance(p, obs) > range) return; // Broad phase
+
+                const closest = getClosestPointOnSegment(obs, start, end);
+                const distSq = (closest.x - obs.x)**2 + (closest.y - obs.y)**2;
+                
+                // "Magnetic" cover effect for hostile projectiles
+                const hitRad = obs.radius + p.radius + (p.hostile && obs.isCover ? 20 : 0);
+                
+                if (distSq < hitRad * hitRad) {
+                    hits.push({ type: 'OBSTACLE', obj: obs, t: closest.t, distSq });
+                }
+            });
+
+            // 2. Check Enemies (Only if friendly)
+            if (!p.hostile) {
+                state.enemies.forEach(e => {
+                    const range = e.radius + p.radius + Math.sqrt(segmentLenSq);
+                    if (getDistance(p, e) > range) return;
+
+                    const closest = getClosestPointOnSegment(e, start, end);
+                    const distSq = (closest.x - e.x)**2 + (closest.y - e.y)**2;
+                    if (distSq < (e.radius + p.radius)**2) {
+                        hits.push({ type: 'ENEMY', obj: e, t: closest.t, distSq });
+                    }
+                });
+            }
+
+            // 3. Check Player (Only if hostile)
             if (p.hostile) {
-                if (getDistance(p, state.player) < p.radius + state.player.radius) {
-                    if (soundEnabled) playSound('HIT');
-                    state.player.hp -= p.damage;
+                const pl = state.player;
+                const closest = getClosestPointOnSegment(pl, start, end);
+                const distSq = (closest.x - pl.x)**2 + (closest.y - pl.y)**2;
+                if (distSq < (pl.radius + p.radius)**2) {
+                    hits.push({ type: 'PLAYER', obj: pl, t: closest.t, distSq });
+                }
+            }
+
+            // Sort hits by 't' (encounter order along the segment)
+            hits.sort((a, b) => a.t - b.t);
+
+            let stopped = false;
+
+            // Process Hits
+            for (const hit of hits) {
+                if (stopped || p.pierce <= 0) break;
+
+                if (hit.type === 'OBSTACLE') {
+                    const obs = hit.obj as Obstacle;
                     
-                    // Visual hit effect
+                    // Hit Feedback
+                    if (soundEnabled) playSound('HIT');
+                    state.particles.push({
+                        id: Math.random().toString(),
+                        x: obs.x, y: obs.y,
+                        radius: 3,
+                        type: 'FRAGMENT',
+                        color: obs.material === 'WOOD' ? '#8B4513' : '#A0AEC0',
+                        velocity: {x: (Math.random()-0.5)*4, y: (Math.random()-0.5)*4},
+                        life: 20, maxLife: 20, scale: 1
+                    });
+
+                    if (obs.destructible) {
+                         obs.hp -= p.damage;
+                         state.texts.push({
+                            id: Math.random().toString(),
+                            x: obs.x, y: obs.y - 15,
+                            text: "BLOCK",
+                            life: 20,
+                            color: '#CBD5E0',
+                            velocity: {x:0, y:-1}
+                         });
+
+                         if (obs.hp <= 0) {
+                             if (soundEnabled) playSound('EXPLOSION');
+                             // Remove obstacle (needs index search or just filter later? modifying array in loop is risky if strict)
+                             // We will mark it dead? Or just splice carefully. 
+                             // Actually state.obstacles is distinct from this loop.
+                             const idx = state.obstacles.findIndex(o => o.id === obs.id);
+                             if (idx !== -1) {
+                                 state.obstacles.splice(idx, 1);
+                                 // Debris
+                                 for(let k=0; k<5; k++) {
+                                     state.particles.push({
+                                         id: Math.random().toString(),
+                                         x: obs.x, y: obs.y,
+                                         radius: 4,
+                                         type: 'FRAGMENT',
+                                         color: '#718096',
+                                         velocity: {x: (Math.random()-0.5)*6, y: (Math.random()-0.5)*6},
+                                         life: 30, maxLife: 30, scale: 1
+                                     });
+                                 }
+                             }
+                         }
+                         
+                         p.pierce--;
+                    } else {
+                        // Indestructible - instant stop
+                         state.texts.push({
+                            id: Math.random().toString(),
+                            x: obs.x, y: obs.y - 15,
+                            text: "BLOCKED",
+                            life: 20,
+                            color: '#718096',
+                            velocity: {x:0, y:-1}
+                        });
+                        p.pierce = 0; // Stop immediately
+                    }
+                    
+                    if (p.pierce <= 0) stopped = true;
+                }
+                
+                else if (hit.type === 'PLAYER') {
+                    const pl = hit.obj as Player;
+                    if (soundEnabled) playSound('HIT');
+                    pl.hp -= p.damage;
                     state.texts.push({
                         id: Math.random().toString(),
-                        x: state.player.x, y: state.player.y - 20,
+                        x: pl.x, y: pl.y - 20,
                         text: `-${p.damage}`,
                         life: 30,
                         color: '#FF0000',
                         velocity: {x:0, y:-1}
                     });
-
-                    if (state.player.hp <= 0) {
+                    if (pl.hp <= 0) {
                         onGameOver(state.score, state.time, state.kills);
                         return;
                     }
-                    
                     p.pierce--;
-                    if (p.pierce <= 0) {
-                        state.projectiles.splice(i, 1);
-                        continue;
-                    }
+                    if (p.pierce <= 0) stopped = true;
                 }
-            } 
-            // PLAYER PROJECTILE HIT ENEMY (or Obstacle)
-            else {
-                // Hit Obstacles
-                for(let j = state.obstacles.length - 1; j >= 0; j--) {
-                    const obs = state.obstacles[j];
-                    if (obs.destructible && getDistance(p, obs) < p.radius + obs.radius) {
-                        obs.hp -= p.damage;
-                        p.pierce--;
+
+                else if (hit.type === 'ENEMY') {
+                    const e = hit.obj as Enemy;
+                    let damage = p.damage;
+                    let blocked = false;
+                    
+                    e.hitFlashTimer = 5; // Flash for 5 frames
+
+                    // Shield Logic
+                    if (e.type === 'SHIELD_ZOMBIE' && (e.shieldHp || 0) > 0) {
+                        const angleToProj = Math.atan2(p.y - e.y, p.x - e.x);
+                        const enemyFacing = Math.atan2(state.player.y - e.y, state.player.x - e.x);
+                        let diff = Math.abs(angleToProj - enemyFacing);
+                        if (diff > Math.PI) diff = 2 * Math.PI - diff;
+                        if (diff < Math.PI / 1.5) blocked = true;
+                    }
+
+                    if (blocked) {
+                         e.shieldHp! -= damage;
+                         if (soundEnabled) playSound('HIT');
+                         state.texts.push({
+                            id: Math.random().toString(),
+                            x: e.x, y: e.y - 20,
+                            text: "BLOCKED",
+                            life: 20,
+                            color: '#63B3ED',
+                            velocity: {x:0, y:-1}
+                        });
+                        if (e.shieldHp! <= 0) {
+                             if (soundEnabled) playSound('EXPLOSION');
+                             for(let k=0; k<5; k++) state.particles.push({ id: Math.random().toString(), x: e.x, y: e.y, radius:3, type:'SPARK', color:'#63B3ED', velocity:{x:(Math.random()-0.5)*5,y:(Math.random()-0.5)*5}, life:20, maxLife:20, scale:1 });
+                        }
+                    } else {
+                        e.hp -= damage;
                         if (soundEnabled) playSound('HIT');
                         
-                        // Debris
-                        state.particles.push({
-                            id: Math.random().toString(),
-                            x: obs.x, y: obs.y,
-                            radius: 2,
-                            type: 'FRAGMENT',
-                            color: obs.material === 'WOOD' ? '#8B4513' : '#718096',
-                            velocity: {x: (Math.random()-0.5)*4, y: (Math.random()-0.5)*4},
-                            life: 20,
-                            maxLife: 20,
-                            scale: 1
-                        });
-
-                        if (obs.hp <= 0) {
-                            if (soundEnabled) playSound('EXPLOSION');
-                            state.obstacles.splice(j, 1);
-                        }
-
-                        if (p.pierce <= 0) break;
-                    }
-                }
-                if (p.pierce <= 0) {
-                    state.projectiles.splice(i, 1);
-                    continue;
-                }
-            
-                // Hit enemies
-                for (const e of state.enemies) {
-                    if (getDistance(p, e) < p.radius + e.radius) {
-                        
-                        let damage = p.damage;
-                        let hitShield = false;
-
-                        // Check Shield
-                        if (e.type === 'SHIELD_ZOMBIE' && (e.shieldHp || 0) > 0) {
-                            // Angle from Enemy to Projectile
-                            const angleToProj = Math.atan2(p.y - e.y, p.x - e.x);
-                            // Enemy facing (towards player)
-                            const enemyFacing = Math.atan2(state.player.y - e.y, state.player.x - e.x);
-                            
-                            // Normalize difference
-                            let diff = Math.abs(angleToProj - enemyFacing);
-                            if (diff > Math.PI) diff = 2 * Math.PI - diff;
-
-                            // If projectile is within ~90 deg cone of front
-                            if (diff < Math.PI / 1.5) {
-                                hitShield = true;
-                            }
-                        }
-
-                        if (hitShield) {
-                            e.shieldHp! -= damage;
-                            if (soundEnabled) playSound('HIT');
-                            state.texts.push({
-                                id: Math.random().toString(),
-                                x: e.x, y: e.y - 20,
-                                text: "BLOCKED",
-                                life: 20,
-                                color: '#63B3ED',
-                                velocity: {x:0, y:-1}
-                            });
-                            if (e.shieldHp! <= 0) {
-                                if (soundEnabled) playSound('EXPLOSION');
-                                // Shield break particles
-                                for(let k=0; k<5; k++) {
-                                    state.particles.push({
-                                        id: Math.random().toString(),
-                                        x: e.x, y: e.y,
-                                        radius: 3,
-                                        type: 'SPARK',
-                                        color: '#63B3ED',
-                                        velocity: {x:(Math.random()-0.5)*5, y:(Math.random()-0.5)*5},
-                                        life: 20, maxLife: 20, scale: 1
-                                    });
-                                }
-                            }
-                            damage = 0; // Absorbed
-                        } else {
-                            e.hp -= damage;
-                            if (soundEnabled) playSound('HIT');
-                            state.texts.push({
-                                id: Math.random().toString(),
+                        // Blood/Sparks Visual Feedback
+                        const isRobot = e.type.includes('ROBOT') || e.type.includes('SHIELD');
+                        const particleColor = isRobot ? '#FAF089' : '#E53E3E'; // Yellow for bots, Red for flesh
+                        for(let k=0; k<3; k++) {
+                             state.particles.push({
+                                id: `hit-${Math.random()}`,
                                 x: e.x, y: e.y,
-                                text: Math.floor(damage).toString(),
-                                life: 30,
-                                color: '#fff',
-                                velocity: {x:0, y:-1}
+                                radius: Math.random() * 2 + 1,
+                                type: 'SPARK',
+                                color: particleColor,
+                                velocity: {x: (Math.random()-0.5)*5, y: (Math.random()-0.5)*5},
+                                life: 15, maxLife: 15, scale: 1
                             });
                         }
 
-                        // Collision side effects
-                        if (damage > 0 || hitShield) {
-                            p.pierce--;
-                            if (p.pierce <= 0) {
-                                state.projectiles.splice(i, 1);
-                                break; 
-                            }
-                        }
+                        state.texts.push({
+                            id: Math.random().toString(),
+                            x: e.x, y: e.y,
+                            text: Math.floor(damage).toString(),
+                            life: 30,
+                            color: '#fff',
+                            velocity: {x:0, y:-1}
+                        });
                     }
+
+                    p.pierce--;
+                    if (p.pierce <= 0) stopped = true;
+                }
+            }
+
+            if (stopped) {
+                state.projectiles.splice(i, 1);
+            } else {
+                p.x = end.x;
+                p.y = end.y;
+                p.duration--;
+                if (p.duration <= 0) {
+                    state.projectiles.splice(i, 1);
                 }
             }
         }
@@ -816,6 +1042,38 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 if (soundEnabled) playSound('COLLECT');
                 if (d.kind === 'XP') {
                     state.player.xp += d.value;
+                    state.player.xpFlashTimer = 10; // 10 frames of animation
+
+                    // VISUAL FEEDBACK: XP Particles on Player
+                    for(let k=0; k<3; k++) {
+                        state.particles.push({
+                            id: `xp-p-${Math.random()}`,
+                            x: state.player.x, 
+                            y: state.player.y,
+                            radius: Math.random() * 3 + 1,
+                            type: 'SPARK',
+                            color: '#4FD1C5', // Cyan/Teal
+                            velocity: { 
+                                x: (Math.random() - 0.5) * 3, 
+                                y: -Math.random() * 3 - 1 
+                            },
+                            life: 20,
+                            maxLife: 20,
+                            scale: 1
+                        });
+                    }
+                    
+                    // VISUAL FEEDBACK: Floating Text from Player
+                    state.texts.push({
+                         id: `xp-t-${Math.random()}`,
+                         x: state.player.x + (Math.random()-0.5)*20,
+                         y: state.player.y - 20,
+                         text: `+${d.value} XP`,
+                         life: 20,
+                         color: '#81E6D9',
+                         velocity: {x:0, y:-1.5}
+                    });
+
                     if (state.player.xp >= state.player.nextLevelXp) {
                         state.player.level++;
                         state.player.xp -= state.player.nextLevelXp;
@@ -840,6 +1098,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                         const w = p.weapons.find(w => w.type === 'CROW_AURA')!;
                                         w.level++; w.area += 2; w.damage += 2;
                                     }
+                                }
+                            },
+                            {
+                                id: 'big_nut', name: 'Mega Nut', description: 'Nuts get bigger and stronger.', rarity: 'RARE', icon: '🌰',
+                                apply: (p) => {
+                                     const w = p.weapons.find(w => w.type === 'NUT_THROW');
+                                     if(w) { w.level++; w.damage += 10; w.area += 0.5; }
                                 }
                             },
                             {
@@ -925,11 +1190,77 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             ctx.stroke();
         }
 
+        // Draw Cover Indicators
+        state.obstacles.forEach(obs => {
+            if (obs.isCover) {
+                const d = getDistance(state.player, obs);
+                const coverRange = obs.radius + state.player.radius + 30;
+                
+                if (d < coverRange) {
+                    // Draw dashed line connecting player to cover
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#63B3ED';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.moveTo(state.player.x - camX, state.player.y - camY);
+                    ctx.lineTo(obs.x - camX, obs.y - camY);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    
+                    // Shield Icon
+                    ctx.font = '16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('🛡️', state.player.x - camX, state.player.y - camY - 35);
+                }
+            }
+        });
+
         const drawEntity = (e: Entity) => {
+             const isBoss = e.type.startsWith('BOSS');
+             let drawRadius = e.radius;
+
+             // Boss Breathing Effect
+             if (isBoss) {
+                 drawRadius *= (1 + Math.sin(state.time * 0.1) * 0.05);
+                 ctx.shadowBlur = 15;
+                 ctx.shadowColor = e.color;
+             }
+
+             // Player XP Pulse Effect
+             if (e.type === 'PLAYER') {
+                 const p = e as Player;
+                 if (p.xpFlashTimer && p.xpFlashTimer > 0) {
+                     // Scale up 
+                     const scale = 1 + (0.2 * (p.xpFlashTimer / 10));
+                     drawRadius *= scale;
+                     
+                     // Draw expanding energy ring
+                     ctx.save();
+                     ctx.beginPath();
+                     const ringRadius = e.radius + (10 - p.xpFlashTimer) * 2;
+                     ctx.arc(e.x - camX, e.y - camY, ringRadius, 0, Math.PI * 2);
+                     ctx.strokeStyle = '#4FD1C5';
+                     ctx.lineWidth = 2;
+                     ctx.globalAlpha = p.xpFlashTimer / 10;
+                     ctx.stroke();
+                     ctx.restore();
+                 }
+             }
+
              ctx.beginPath();
-             ctx.arc(e.x - camX, e.y - camY, e.radius, 0, Math.PI * 2);
-             ctx.fillStyle = e.color;
+             ctx.arc(e.x - camX, e.y - camY, drawRadius, 0, Math.PI * 2);
+             
+             // Visual Feedback: White Flash on Hit
+             if ((e as Enemy).hitFlashTimer && (e as Enemy).hitFlashTimer! > 0) {
+                 ctx.fillStyle = '#FFFFFF';
+             } else {
+                 ctx.fillStyle = e.color;
+             }
+             
              ctx.fill();
+             
+             if (isBoss) ctx.shadowBlur = 0; // Reset shadow for text
+
              if (e.emoji) {
                  ctx.save();
                  if ((e as any).rotation) {
@@ -941,7 +1272,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                  if (e.type === 'PLAYER' && (e as any).filter) {
                     ctx.filter = (e as any).filter;
                  }
-                 ctx.font = `${e.radius * 1.4}px Arial`;
+                 
+                 const fontSize = isBoss ? drawRadius * 1.4 : e.radius * 1.4;
+                 ctx.font = `${fontSize}px Arial`;
                  ctx.textAlign = 'center';
                  ctx.textBaseline = 'middle';
                  ctx.fillText(e.emoji, e.x - camX, e.y - camY);
@@ -963,6 +1296,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         state.drops.forEach(drawEntity);
         
         state.enemies.forEach(e => {
+            // Boss Aura/Rings Rendering
+            if (e.type.startsWith('BOSS')) {
+                ctx.save();
+                ctx.translate(e.x - camX, e.y - camY);
+                
+                // Outer Ring
+                ctx.beginPath();
+                ctx.rotate(state.time * 0.02);
+                ctx.strokeStyle = e.color + '44'; // Low opacity
+                ctx.lineWidth = 4;
+                ctx.setLineDash([15, 10]);
+                ctx.arc(0, 0, e.radius * 1.5, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                // Inner Ring
+                ctx.beginPath();
+                ctx.rotate(state.time * -0.05); // Counter rotate
+                ctx.strokeStyle = e.color + '66';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.arc(0, 0, e.radius * 1.2, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+
             drawEntity(e);
             
             // Draw Shield Arc if active
