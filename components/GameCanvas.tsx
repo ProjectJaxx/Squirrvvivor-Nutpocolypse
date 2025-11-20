@@ -40,6 +40,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const requestRef = useRef<number>();
     const stateRef = useRef<GameState>(JSON.parse(JSON.stringify(INITIAL_GAME_STATE)));
     const keysRef = useRef<{ [key: string]: boolean }>({});
+    
+    // Joystick State
+    const joystickRef = useRef<{
+        active: boolean;
+        origin: {x: number, y: number};
+        current: {x: number, y: number};
+        vector: {x: number, y: number};
+        id: number | null;
+    }>({ active: false, origin: {x:0, y:0}, current: {x:0, y:0}, vector: {x:0, y:0}, id: null });
 
     const generateObstacles = (biome: string, bounds: {minX: number, maxX: number, minY: number, maxY: number}) => {
         const obstacles: Obstacle[] = [];
@@ -129,6 +138,80 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         };
     }, [onTogglePause]);
 
+    // Touch Handling (Joystick)
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const handleTouchStart = (e: TouchEvent) => {
+            e.preventDefault();
+            const touch = e.changedTouches[0];
+            // If joystick not active, start it
+            if (!joystickRef.current.active) {
+                joystickRef.current.active = true;
+                joystickRef.current.id = touch.identifier;
+                joystickRef.current.origin = { x: touch.clientX, y: touch.clientY };
+                joystickRef.current.current = { x: touch.clientX, y: touch.clientY };
+                joystickRef.current.vector = { x: 0, y: 0 };
+            }
+        };
+
+        const handleTouchMove = (e: TouchEvent) => {
+            e.preventDefault();
+            if (!joystickRef.current.active) return;
+            
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const touch = e.changedTouches[i];
+                if (touch.identifier === joystickRef.current.id) {
+                    const maxDist = 50;
+                    const dx = touch.clientX - joystickRef.current.origin.x;
+                    const dy = touch.clientY - joystickRef.current.origin.y;
+                    const dist = Math.hypot(dx, dy);
+                    
+                    // Clamp visual position
+                    const clampedDist = Math.min(dist, maxDist);
+                    const angle = Math.atan2(dy, dx);
+                    
+                    joystickRef.current.current = {
+                        x: joystickRef.current.origin.x + Math.cos(angle) * clampedDist,
+                        y: joystickRef.current.origin.y + Math.sin(angle) * clampedDist
+                    };
+
+                    // Normalize vector
+                    if (dist > 5) {
+                        joystickRef.current.vector = {
+                            x: Math.cos(angle),
+                            y: Math.sin(angle)
+                        };
+                    } else {
+                        joystickRef.current.vector = { x: 0, y: 0 };
+                    }
+                }
+            }
+        };
+
+        const handleTouchEnd = (e: TouchEvent) => {
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === joystickRef.current.id) {
+                    joystickRef.current.active = false;
+                    joystickRef.current.id = null;
+                    joystickRef.current.vector = { x: 0, y: 0 };
+                }
+            }
+        };
+
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+
+        return () => {
+            canvas.removeEventListener('touchstart', handleTouchStart);
+            canvas.removeEventListener('touchmove', handleTouchMove);
+            canvas.removeEventListener('touchend', handleTouchEnd);
+        };
+    }, []);
+
     const update = () => {
         if (paused) return;
         const state = stateRef.current;
@@ -147,52 +230,96 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             state.bossWarningTimer--;
         }
 
-        // Spawn Boss
+        // Spawn Boss Logic
         if (state.time > 60 && state.time % BOSS_WAVE_INTERVAL === 0) {
              const angle = Math.random() * Math.PI * 2;
              const dist = 800;
              const spawnX = state.player.x + Math.cos(angle) * dist;
              const spawnY = state.player.y + Math.sin(angle) * dist;
              
-             const bossHp = 1000 + (state.time / 60) * 50;
+             const bossCount = Math.round(state.time / BOSS_WAVE_INTERVAL);
+             const scaling = state.time / 60;
              
+             let bossType: any = 'BOSS_ZOMBIE';
+             let bossEmoji = '🧟‍♂️';
+             let bossHp = 1000 + scaling * 50;
+             let bossColor = '#805AD5'; // Purple
+             let bossSpeed = 2;
+             
+             // Rotate Bosses: 1=Zombie, 2=Robot, 3=Alien, etc.
+             const cycle = bossCount % 3;
+             
+             if (cycle === 0) {
+                // Boss Alien (Every 3rd boss cycle)
+                bossType = 'BOSS_ALIEN';
+                bossEmoji = '👽';
+                bossHp = 3000 + scaling * 80; // Much tankier
+                bossColor = '#D53F8C'; // Pink
+                bossSpeed = 1.5;
+             } else if (cycle === 2) {
+                // Boss Robot
+                bossType = 'BOSS_ROBOT';
+                bossEmoji = '🤖';
+                bossHp = 2000 + scaling * 60;
+                bossColor = '#718096'; // Grey
+                bossSpeed = 1.8;
+             }
+
              state.enemies.push({
                  id: `boss-${state.time}`,
                  x: spawnX,
                  y: spawnY,
                  radius: 50,
-                 type: 'BOSS_ZOMBIE',
-                 color: '#805AD5',
-                 emoji: '🧟‍♂️',
+                 type: bossType,
+                 color: bossColor,
+                 emoji: bossEmoji,
                  hp: bossHp,
                  maxHp: bossHp,
-                 speed: 2,
+                 speed: bossSpeed,
                  damage: 30,
                  knockback: {x:0, y:0},
-                 statusEffects: []
+                 statusEffects: [],
+                 attackTimer: 0
              });
         }
 
         // Player Movement
         let dx = 0;
         let dy = 0;
+        
+        // Keyboard Input
         if (keysRef.current['w'] || keysRef.current['ArrowUp']) dy -= 1;
         if (keysRef.current['s'] || keysRef.current['ArrowDown']) dy += 1;
         if (keysRef.current['a'] || keysRef.current['ArrowLeft']) dx -= 1;
         if (keysRef.current['d'] || keysRef.current['ArrowRight']) dx += 1;
+
+        // Joystick Input override
+        if (joystickRef.current.active) {
+            dx = joystickRef.current.vector.x;
+            dy = joystickRef.current.vector.y;
+        }
 
         // Pre-calculate proposed new position
         let newX = state.player.x;
         let newY = state.player.y;
 
         if (dx !== 0 || dy !== 0) {
+            // Normalize if using keyboard to prevent fast diagonal movement
             const len = Math.sqrt(dx*dx + dy*dy);
             const moveSpeed = state.player.speed;
-            newX += (dx / len) * moveSpeed;
-            newY += (dy / len) * moveSpeed;
             
-            if (dx < 0) state.player.facing = 'LEFT';
-            if (dx > 0) state.player.facing = 'RIGHT';
+            if (len > 0) {
+                if (joystickRef.current.active) {
+                    newX += dx * moveSpeed;
+                    newY += dy * moveSpeed;
+                } else {
+                    newX += (dx / len) * moveSpeed;
+                    newY += (dy / len) * moveSpeed;
+                }
+            }
+            
+            if (dx < -0.1) state.player.facing = 'LEFT';
+            if (dx > 0.1) state.player.facing = 'RIGHT';
         }
 
         // Obstacle Collision (Player)
@@ -413,6 +540,36 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
             e.x += moveX;
             e.y += moveY;
+
+            // ALIEN BOSS ATTACK LOGIC
+            if (e.type === 'BOSS_ALIEN') {
+                if (e.attackTimer === undefined) e.attackTimer = 0;
+                e.attackTimer--;
+                
+                // Fire laser every ~1.5 seconds
+                if (e.attackTimer <= 0) {
+                    e.attackTimer = 90; 
+                    if (soundEnabled) playSound('CANNON'); // Recycle Cannon sound for laser 'pew'
+                    
+                    const laserAngle = Math.atan2(state.player.y - e.y, state.player.x - e.x);
+                    state.projectiles.push({
+                        id: `laser-${Math.random()}`,
+                        x: e.x, y: e.y,
+                        radius: 6,
+                        type: 'LASER',
+                        color: '#00FF00', // Neon Green
+                        velocity: { 
+                            x: Math.cos(laserAngle) * 10, 
+                            y: Math.sin(laserAngle) * 10 
+                        },
+                        damage: 20,
+                        duration: 120,
+                        pierce: 1,
+                        rotation: laserAngle,
+                        hostile: true // IMPORTANT
+                    });
+                }
+            }
             
             // Simple collision with player
             if (getDistance(e, state.player) < e.radius + state.player.radius) {
@@ -458,8 +615,37 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                  continue;
             }
 
-            // Hit Obstacles
-            if (!p.hostile) {
+            // HOSTILE PROJECTILE HIT PLAYER
+            if (p.hostile) {
+                if (getDistance(p, state.player) < p.radius + state.player.radius) {
+                    if (soundEnabled) playSound('HIT');
+                    state.player.hp -= p.damage;
+                    
+                    // Visual hit effect
+                    state.texts.push({
+                        id: Math.random().toString(),
+                        x: state.player.x, y: state.player.y - 20,
+                        text: `-${p.damage}`,
+                        life: 30,
+                        color: '#FF0000',
+                        velocity: {x:0, y:-1}
+                    });
+
+                    if (state.player.hp <= 0) {
+                        onGameOver(state.score, state.time, state.kills);
+                        return;
+                    }
+                    
+                    p.pierce--;
+                    if (p.pierce <= 0) {
+                        state.projectiles.splice(i, 1);
+                        continue;
+                    }
+                }
+            } 
+            // PLAYER PROJECTILE HIT ENEMY (or Obstacle)
+            else {
+                // Hit Obstacles
                 for(let j = state.obstacles.length - 1; j >= 0; j--) {
                     const obs = state.obstacles[j];
                     if (obs.destructible && getDistance(p, obs) < p.radius + obs.radius) {
@@ -492,10 +678,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     state.projectiles.splice(i, 1);
                     continue;
                 }
-            }
             
-            // Hit enemies
-            if (!p.hostile) {
+                // Hit enemies
                 for (const e of state.enemies) {
                     if (getDistance(p, e) < p.radius + e.radius) {
                         
@@ -614,13 +798,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
 
         // Drops Logic
+        const magnetRadius = 250;
         for (let i = state.drops.length - 1; i >= 0; i--) {
             const d = state.drops[i];
             const dist = getDistance(d, state.player);
-            if (dist < 150) { // Magnet
-                d.x += (state.player.x - d.x) * 0.1;
-                d.y += (state.player.y - d.y) * 0.1;
+            
+            if (dist < magnetRadius) { // Magnet
+                const angle = Math.atan2(state.player.y - d.y, state.player.x - d.x);
+                // Accelerate as it gets closer: Speed 4 to 16
+                const speed = 4 + (1 - dist / magnetRadius) * 12;
+                
+                d.x += Math.cos(angle) * speed;
+                d.y += Math.sin(angle) * speed;
             }
+
             if (dist < state.player.radius + d.radius) {
                 if (soundEnabled) playSound('COLLECT');
                 if (d.kind === 'XP') {
@@ -806,6 +997,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 ctx.arc(p.x - camX, p.y - camY, p.radius, 0, Math.PI*2);
                 ctx.fill();
                 ctx.globalAlpha = 1.0;
+            } else if (p.type === 'LASER') {
+                // Draw Laser as a line/glow
+                ctx.save();
+                ctx.translate(p.x - camX, p.y - camY);
+                ctx.rotate(p.rotation);
+                ctx.fillStyle = p.color;
+                ctx.shadowColor = p.color;
+                ctx.shadowBlur = 10;
+                ctx.fillRect(-10, -2, 20, 4); // Laser beam
+                ctx.restore();
             } else {
                 drawEntity(p);
             }
@@ -833,19 +1034,39 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             ctx.fillText(t.text, t.x - camX, t.y - camY);
         });
 
+        // Draw Joystick
+        if (joystickRef.current.active) {
+            const { origin, current } = joystickRef.current;
+            // Base
+            ctx.beginPath();
+            ctx.arc(origin.x, origin.y, 50, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.stroke();
+
+            // Stick
+            ctx.beginPath();
+            ctx.arc(current.x, current.y, 20, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.fill();
+        }
+
         // HUD
         // Health
+        const safeY = 40; // Adjust for mobile notches if needed
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillRect(10, 10, 220, 80);
+        ctx.fillRect(10, safeY - 30, 220, 60);
         
         ctx.fillStyle = 'white';
         ctx.font = '16px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText(`HP: ${Math.ceil(state.player.hp)}/${state.player.maxHp}`, 20, 35);
+        ctx.fillText(`HP: ${Math.ceil(state.player.hp)}/${Math.ceil(state.player.maxHp)}`, 20, safeY - 10);
         ctx.fillStyle = '#333';
-        ctx.fillRect(20, 45, 200, 10);
+        ctx.fillRect(20, safeY, 200, 10);
         ctx.fillStyle = 'red';
-        ctx.fillRect(20, 45, 200 * (state.player.hp / state.player.maxHp), 10);
+        ctx.fillRect(20, safeY, 200 * (state.player.hp / state.player.maxHp), 10);
         
         // Timer & Score
         ctx.fillStyle = 'white';
@@ -853,11 +1074,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const mins = Math.floor(state.time / 60 / 60);
         const secs = Math.floor((state.time / 60) % 60);
         ctx.textAlign = 'center';
-        ctx.fillText(`${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`, canvas.width / 2, 40);
+        ctx.fillText(`${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`, canvas.width / 2, safeY);
         
         ctx.textAlign = 'right';
-        ctx.fillText(`Score: ${state.score}`, canvas.width - 20, 30);
-        ctx.fillText(`Kills: ${state.kills}`, canvas.width - 20, 60);
+        ctx.fillText(`Score: ${state.score}`, canvas.width - 20, safeY - 10);
+        ctx.fillText(`Kills: ${state.kills}`, canvas.width - 20, safeY + 15);
 
         // BOSS HEALTH BAR (Global)
         const boss = state.enemies.find(e => e.type.startsWith('BOSS'));
@@ -865,7 +1086,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const barW = Math.min(600, canvas.width - 40);
             const barH = 24;
             const barX = (canvas.width - barW) / 2;
-            const barY = 90;
+            const barY = safeY + 40;
 
             ctx.save();
             // Text
@@ -874,7 +1095,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             ctx.textAlign = 'center';
             ctx.shadowColor = 'black';
             ctx.shadowBlur = 4;
-            ctx.fillText('⚠️ BOSS DETECTED ⚠️', canvas.width / 2, barY - 10);
+            let bossTitle = '⚠️ BOSS DETECTED ⚠️';
+            if (boss.type === 'BOSS_ALIEN') bossTitle = '👽 ALIEN INVADER DETECTED 👽';
+            else if (boss.type === 'BOSS_ROBOT') bossTitle = '🤖 MECHA-ZOMBIE DETECTED 🤖';
+            
+            ctx.fillText(bossTitle, canvas.width / 2, barY - 10);
 
             // Bar Back
             ctx.fillStyle = 'rgba(0,0,0,0.8)';
@@ -885,17 +1110,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
             // Bar Fill
             const pct = Math.max(0, boss.hp / boss.maxHp);
-            ctx.fillStyle = '#9F7AEA'; // Purple
+            ctx.fillStyle = boss.type === 'BOSS_ALIEN' ? '#D53F8C' : '#9F7AEA'; // Pink for Alien, Purple for Zombie
             ctx.fillRect(barX+2, barY+2, (barW-4)*pct, barH-4);
             
             ctx.restore();
         }
 
-        // XP Bar
+        // XP Bar (Bottom)
+        const xpBarHeight = 16;
         ctx.fillStyle = '#222';
-        ctx.fillRect(0, canvas.height - 16, canvas.width, 16);
+        ctx.fillRect(0, canvas.height - xpBarHeight, canvas.width, xpBarHeight);
         ctx.fillStyle = '#4FD1C5';
-        ctx.fillRect(0, canvas.height - 16, canvas.width * (state.player.xp / state.player.nextLevelXp), 16);
+        ctx.fillRect(0, canvas.height - xpBarHeight, canvas.width * (state.player.xp / state.player.nextLevelXp), xpBarHeight);
         
         ctx.textAlign = 'center';
         ctx.font = '10px sans-serif';
@@ -938,5 +1164,5 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         };
     }, [paused, soundEnabled]);
 
-    return <canvas ref={canvasRef} className="block bg-gray-900" />;
+    return <canvas ref={canvasRef} className="block bg-gray-900 w-full h-full touch-none select-none" />;
 };

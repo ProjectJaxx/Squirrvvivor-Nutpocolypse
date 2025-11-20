@@ -41,73 +41,73 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, selecte
         <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-gray-800/80 p-2 px-4 rounded-full border border-gray-600 cursor-pointer hover:bg-gray-700 transition" onClick={onSwitchSlot}>
             <Save size={16} className="text-amber-400" />
             <span className="text-sm font-bold text-gray-200">{currentSlot.name}</span>
-            <span className="text-xs text-gray-500 ml-2">Switch Slot</span>
+            <span className="text-xs text-gray-500 ml-2">Switch</span>
         </div>
       )}
 
-      <div className="z-10 text-center p-8 bg-gray-800/80 backdrop-blur rounded-2xl border border-gray-600 shadow-2xl max-w-5xl w-full flex flex-col md:flex-row gap-8 items-center mb-12">
+      <div className="z-10 text-center p-4 md:p-8 bg-gray-800/80 backdrop-blur rounded-2xl border border-gray-600 shadow-2xl max-w-5xl w-full flex flex-col md:flex-row gap-4 md:gap-8 items-center mb-8 md:mb-12 max-h-[95vh] overflow-y-auto md:overflow-visible">
         
         {/* Left: Title and Controls */}
-        <div className="flex-1 flex flex-col items-center md:items-start">
-            <h1 className="text-4xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-600 mb-4 pixel-font drop-shadow-sm text-left leading-tight">
+        <div className="flex-1 flex flex-col items-center md:items-start w-full">
+            <h1 className="text-3xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-600 mb-4 pixel-font drop-shadow-sm text-center md:text-left leading-tight">
             SQUIRRELVIVOR<br/>NUTPOCOLYPSE
             </h1>
             
             {currentSlot && (
-                <div className="flex gap-4 mb-4 text-sm w-full bg-gray-900/50 p-2 rounded border border-gray-700">
-                    <div className="flex-1 flex flex-col items-center">
-                        <span className="text-gray-400 text-xs">HIGH SCORE</span>
+                <div className="flex gap-4 mb-4 text-sm w-full bg-gray-900/50 p-2 rounded border border-gray-700 justify-center md:justify-start">
+                    <div className="flex flex-col items-center px-2">
+                        <span className="text-gray-400 text-[10px]">HIGH SCORE</span>
                         <span className="font-bold text-yellow-400">{currentSlot.stats.highestScore}</span>
                     </div>
                     <div className="w-px bg-gray-700"></div>
-                    <div className="flex-1 flex flex-col items-center">
-                        <span className="text-gray-400 text-xs">MAX WAVE</span>
+                    <div className="flex flex-col items-center px-2">
+                        <span className="text-gray-400 text-[10px]">MAX WAVE</span>
                         <span className="font-bold text-blue-400">{currentSlot.stats.maxWaveReached}</span>
                     </div>
                 </div>
             )}
 
-            <div className="mb-6 italic text-gray-400 text-sm font-serif text-left min-h-[40px]">
+            <div className="mb-4 md:mb-6 italic text-gray-400 text-xs md:text-sm font-serif text-center md:text-left min-h-[30px]">
                 "{lore}"
             </div>
 
-            <div className="flex flex-col gap-3 w-full max-w-xs">
+            <div className="flex flex-col gap-3 w-full max-w-xs mx-auto md:mx-0">
                 <button 
                     onClick={onStart}
-                    className="flex items-center justify-center gap-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-bold py-4 px-8 rounded-lg transform transition hover:scale-105 shadow-lg text-xl"
+                    className="flex items-center justify-center gap-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-bold py-3 md:py-4 px-8 rounded-lg transform transition hover:scale-105 shadow-lg text-lg md:text-xl"
                 >
                     <Play fill="currentColor" /> START GAME
                 </button>
                 
                 <button 
                     onClick={onSettings}
-                    className="flex items-center justify-center gap-3 bg-gray-700 hover:bg-gray-600 text-gray-200 font-bold py-3 px-6 rounded-lg transition text-lg"
+                    className="flex items-center justify-center gap-3 bg-gray-700 hover:bg-gray-600 text-gray-200 font-bold py-3 px-6 rounded-lg transition text-base md:text-lg"
                 >
                     <SettingsIcon /> SETTINGS
                 </button>
             </div>
-            <div className="mt-4 text-gray-500 text-xs">
+            <div className="mt-4 text-gray-500 text-xs hidden md:block">
                 WASD / Arrows to move.
             </div>
         </div>
 
         {/* Right: Character Select */}
-        <div className="flex-1 w-full bg-gray-900/50 p-6 rounded-xl border border-gray-700">
-            <h2 className="text-xl font-bold text-amber-400 mb-4 pixel-font">CHOOSE YOUR SQUIRREL</h2>
+        <div className="flex-1 w-full bg-gray-900/50 p-4 md:p-6 rounded-xl border border-gray-700">
+            <h2 className="text-lg md:text-xl font-bold text-amber-400 mb-4 pixel-font text-center md:text-left">CHOOSE SQUIRREL</h2>
             
             <div className="flex flex-col gap-4">
-                <div className="flex justify-center gap-4">
+                <div className="flex justify-center md:justify-start gap-2 md:gap-4 overflow-x-auto pb-2">
                     {SQUIRREL_CHARACTERS.map(char => (
                         <button 
                             key={char.id}
                             onClick={() => onSelectCharacter(char)}
-                            className={`relative p-4 rounded-lg border-2 transition-all duration-200 flex flex-col items-center gap-2 w-24
+                            className={`relative p-3 md:p-4 rounded-lg border-2 transition-all duration-200 flex flex-col items-center gap-2 min-w-[80px] w-24
                                 ${selectedCharacter.id === char.id 
-                                    ? 'bg-gray-700 border-amber-500 scale-110 shadow-[0_0_15px_rgba(245,158,11,0.3)]' 
+                                    ? 'bg-gray-700 border-amber-500 scale-105 md:scale-110 shadow-[0_0_15px_rgba(245,158,11,0.3)]' 
                                     : 'bg-gray-800 border-gray-600 hover:border-gray-400 opacity-70 hover:opacity-100'}`}
                         >
                             <div 
-                                className="text-4xl filter drop-shadow-md transition-all" 
+                                className="text-3xl md:text-4xl filter drop-shadow-md transition-all" 
                                 style={{ filter: char.filter }}
                             >
                                 {char.emoji}
@@ -120,12 +120,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, selecte
                 </div>
 
                 {/* Selected Stats */}
-                <div className="bg-gray-800 p-4 rounded border border-gray-700 mt-2">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-1">
+                <div className="bg-gray-800 p-3 md:p-4 rounded border border-gray-700 mt-2">
+                    <h3 className="text-base md:text-lg font-bold text-white flex items-center gap-2 mb-1">
                         <span style={{ filter: selectedCharacter.filter }}>{selectedCharacter.emoji}</span> 
                         {selectedCharacter.name}
                     </h3>
-                    <p className="text-xs text-gray-400 mb-4">{selectedCharacter.description}</p>
+                    <p className="text-xs text-gray-400 mb-4 leading-tight">{selectedCharacter.description}</p>
 
                     <div className="space-y-2">
                         <div>
@@ -160,10 +160,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, selecte
       </div>
 
       {/* Credits Footer */}
-      <div className="absolute bottom-4 text-gray-500 text-xs font-mono text-center z-20 leading-relaxed">
-          SQUIRRELVIVOR NUTPOCOLYPSE<br/>
-          Authored by Racer The Squirrel, Dirt McGirt and Gemini<br/>
-          <a href="https://randomly.wtf" target="_blank" rel="noreferrer" className="text-amber-600 hover:text-amber-400 transition">https://randomly.wtf</a>
+      <div className="absolute bottom-2 md:bottom-4 text-gray-500 text-[10px] md:text-xs font-mono text-center z-20 leading-relaxed px-4">
+          SQUIRRELVIVOR NUTPOCOLYPSE | By Racer The Squirrel, Dirt McGirt and Gemini
       </div>
     </div>
   );
