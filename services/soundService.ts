@@ -236,3 +236,213 @@ export const playSound = (type: SoundType) => {
       console.warn("Audio play failed", e);
   }
 };
+
+// --- PROCEDURAL MUSIC ENGINE ---
+
+let isMusicPlaying = false;
+let nextNoteTime = 0.0;
+let current16thNote = 0;
+let musicTimerID: number | undefined;
+let musicBiome = 'PARK';
+let musicGain: GainNode | null = null;
+
+const TEMPO = 120.0;
+const LOOKAHEAD = 25.0; // ms
+const SCHEDULE_AHEAD_TIME = 0.1; // s
+
+const SCALES: Record<string, number[]> = {
+    PARK: [0, 2, 4, 7, 9], // Major Pentatonic (Happy, Bright)
+    PARKING_LOT: [0, 3, 5, 6, 7, 10], // Blues Scale (Gritty, Cool)
+    MARS: [0, 2, 4, 6, 8, 10] // Whole Tone (Spacey, Unsettling)
+};
+
+// Frequency helper
+const noteToFreq = (stepsFromRoot: number, rootFreq = 220) => {
+    return rootFreq * Math.pow(2, stepsFromRoot / 12);
+};
+
+const getScaleNote = (index: number, scale: number[], octaveOffset = 0) => {
+    const len = scale.length;
+    const octave = Math.floor(index / len) + octaveOffset;
+    const degree = ((index % len) + len) % len; // handle negative modulation
+    return noteToFreq(scale[degree] + octave * 12);
+};
+
+const scheduleNote = (beatNumber: number, time: number, ctx: AudioContext) => {
+    if (!musicGain) return;
+    
+    const scale = SCALES[musicBiome] || SCALES.PARK;
+    
+    // 1. Kick (Quarter notes)
+    if (beatNumber % 4 === 0) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(musicGain);
+
+        osc.frequency.setValueAtTime(150, time);
+        osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.5);
+        gain.gain.setValueAtTime(0.6, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.5);
+
+        osc.start(time);
+        osc.stop(time + 0.5);
+    }
+
+    // 2. Snare (Beats 4, 12 in 16th grid -> 2 and 4 quarter)
+    if (beatNumber % 16 === 4 || beatNumber % 16 === 12) {
+        const noise = ctx.createBufferSource();
+        noise.buffer = getNoiseBuffer(ctx);
+        const noiseFilter = ctx.createBiquadFilter();
+        noiseFilter.type = 'highpass';
+        noiseFilter.frequency.value = 1000;
+        const gain = ctx.createGain();
+        
+        noise.connect(noiseFilter);
+        noiseFilter.connect(gain);
+        gain.connect(musicGain);
+
+        gain.gain.setValueAtTime(0.4, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+        
+        noise.start(time);
+        noise.stop(time + 0.2);
+    }
+
+    // 3. HiHat (Every 16th, louder on 8ths)
+    if (beatNumber % 2 === 0) { // 8th notes
+        const noise = ctx.createBufferSource();
+        noise.buffer = getNoiseBuffer(ctx);
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.value = 5000;
+        const gain = ctx.createGain();
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(musicGain);
+
+        // Accent beats
+        const volume = (beatNumber % 4 === 0) ? 0.15 : 0.05;
+        
+        gain.gain.setValueAtTime(volume, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+        
+        noise.start(time);
+        noise.stop(time + 0.05);
+    }
+
+    // 4. Bass (16th notes, pattern based on biome)
+    if (beatNumber % 4 === 0 || beatNumber % 16 === 14) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = musicBiome === 'MARS' ? 'sine' : (musicBiome === 'PARKING_LOT' ? 'sawtooth' : 'square');
+        osc.connect(gain);
+        gain.connect(musicGain);
+
+        // Simple bass line logic
+        let noteIdx = 0; // Root
+        if (beatNumber % 16 === 14) noteIdx = 2; // Variation
+        
+        // Mars wobbles
+        if (musicBiome === 'MARS') {
+             osc.frequency.setValueAtTime(getScaleNote(noteIdx, scale, -2), time);
+             osc.frequency.linearRampToValueAtTime(getScaleNote(noteIdx+1, scale, -2), time + 0.2);
+        } else {
+             osc.frequency.setValueAtTime(getScaleNote(noteIdx, scale, -2), time);
+        }
+
+        gain.gain.setValueAtTime(0.3, time);
+        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.3);
+
+        osc.start(time);
+        osc.stop(time + 0.3);
+    }
+
+    // 5. Lead Melody (Sparse, generated)
+    // Play on random 16ths but aligned to musical grid somewhat
+    // Using a pseudo-random pattern based on beatNumber so it loops consistently-ish
+    const pattern = [0, -1, 2, -1, 4, 2, 0, -1, 5, 4, -1, 2, 7, -1, 0, -1]; // -1 = rest
+    const melodyNote = pattern[beatNumber % 16];
+    
+    if (melodyNote !== -1 && Math.random() > 0.2) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = musicBiome === 'MARS' ? 'triangle' : 'sine';
+        
+        if (musicBiome === 'PARKING_LOT') {
+            // Distortion effect simulated by gain clipping or type
+            osc.type = 'square';
+        }
+        
+        osc.connect(gain);
+        gain.connect(musicGain);
+
+        const freq = getScaleNote(melodyNote, scale, 0);
+        osc.frequency.setValueAtTime(freq, time);
+        
+        if (musicBiome === 'MARS') {
+            // Slide
+            osc.frequency.linearRampToValueAtTime(freq * 1.05, time + 0.2);
+        }
+
+        gain.gain.setValueAtTime(0.15, time);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.4);
+
+        osc.start(time);
+        osc.stop(time + 0.4);
+    }
+};
+
+const scheduler = () => {
+    const ctx = getCtx();
+    if (!ctx) return;
+
+    // Schedule ahead
+    while (nextNoteTime < ctx.currentTime + SCHEDULE_AHEAD_TIME) {
+        scheduleNote(current16thNote, nextNoteTime, ctx);
+        const secondsPerBeat = 60.0 / TEMPO;
+        nextNoteTime += 0.25 * secondsPerBeat; // Advance by 16th note
+        current16thNote++;
+        if (current16thNote === 16) current16thNote = 0;
+    }
+    
+    musicTimerID = window.setTimeout(scheduler, LOOKAHEAD);
+};
+
+export const playMusic = (biome: string) => {
+    if (isMusicPlaying) {
+        // Just switch biome if already playing
+        musicBiome = biome;
+        return;
+    }
+
+    const ctx = getCtx();
+    if (!ctx) return;
+
+    if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+    }
+
+    isMusicPlaying = true;
+    musicBiome = biome;
+    current16thNote = 0;
+    nextNoteTime = ctx.currentTime + 0.1;
+
+    // Master Music Gain
+    if (!musicGain) {
+        musicGain = ctx.createGain();
+        musicGain.connect(ctx.destination);
+        musicGain.gain.value = 0.25; // Slightly quieter than SFX
+    }
+
+    scheduler();
+};
+
+export const stopMusic = () => {
+    isMusicPlaying = false;
+    if (musicTimerID) {
+        window.clearTimeout(musicTimerID);
+        musicTimerID = undefined;
+    }
+};

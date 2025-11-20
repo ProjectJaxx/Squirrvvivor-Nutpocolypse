@@ -11,7 +11,7 @@ export type DropKind = 'XP' | 'GOLD' | 'HEALTH_PACK';
 export type EntityType = 
   'PLAYER' | 'ZOMBIE' | 'ROBOT' | 'ALIEN' | 
   'NUT_SHELL' | 'EXPLODING_ACORN' | 'CROW_FEATHER' | 'DROP' | 'CROW' | 
-  'EXPLOSION' | 'SMOKE' | 'TRAIL' | 'OBSTACLE' | 'FRAGMENT' | 'SPARK' |
+  'EXPLOSION' | 'SMOKE' | 'TRAIL' | 'OBSTACLE' | 'FRAGMENT' | 'SPARK' | 'FLASH' |
   'BRUTE_ZOMBIE' | 'RUNNER_ZOMBIE' | 'SPITTER_ZOMBIE' | 'VENOM_SPIT' |
   'SWARM_ZOMBIE' | 'SHIELD_ZOMBIE' |
   'BOSS_ZOMBIE' | 'BOSS_ROBOT' | 'BOSS_ALIEN' | 'BOSS_MISSILE' | 'LASER';
@@ -50,6 +50,7 @@ export interface Player extends Entity {
   characterId?: string;
   filter?: string;
   xpFlashTimer?: number;
+  slowedTimer?: number;
 }
 
 export interface StatusEffect {
@@ -177,4 +178,25 @@ export interface SaveSlot {
   lastPlayed: number;
   created: number;
   stats: PlayerStats;
+}
+
+export interface SettingsMenuProps {
+  soundEnabled: boolean;
+  toggleSound: () => void;
+  musicEnabled: boolean;
+  toggleMusic: () => void;
+  stageDuration: StageDuration;
+  setStageDuration: (d: StageDuration) => void;
+  onBack: () => void;
+}
+
+export interface GameCanvasProps {
+  onGameOver: (score: number, time: number, kills: number) => void;
+  onLevelUp: (upgrades: Upgrade[], onSelect: (u: Upgrade) => void) => void;
+  paused: boolean;
+  character: SquirrelCharacter;
+  soundEnabled: boolean;
+  musicEnabled: boolean;
+  stageDuration: StageDuration;
+  onTogglePause: () => void;
 }

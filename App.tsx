@@ -29,6 +29,7 @@ const App: React.FC = () => {
   
   // Settings
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [musicEnabled, setMusicEnabled] = useState(true);
   const [stageDuration, setStageDuration] = useState<StageDuration>('STANDARD');
   
   const [selectedCharacter, setSelectedCharacter] = useState<SquirrelCharacter>(SQUIRREL_CHARACTERS[0]);
@@ -106,6 +107,7 @@ const App: React.FC = () => {
               paused={appState !== 'GAME'}
               character={selectedCharacter}
               soundEnabled={soundEnabled}
+              musicEnabled={musicEnabled}
               stageDuration={stageDuration}
               onTogglePause={togglePause}
             />
@@ -131,6 +133,8 @@ const App: React.FC = () => {
         <SettingsMenu 
           soundEnabled={soundEnabled} 
           toggleSound={() => setSoundEnabled(!soundEnabled)}
+          musicEnabled={musicEnabled}
+          toggleMusic={() => setMusicEnabled(!musicEnabled)}
           stageDuration={stageDuration}
           setStageDuration={setStageDuration} 
           onBack={closeSettings} 
