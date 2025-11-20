@@ -9,6 +9,7 @@ import {
     INITIAL_GAME_STATE, STAGE_CONFIGS, UPGRADE_POOL_IDS 
 } from '../constants';
 import { playSound, playMusic, stopMusic } from '../services/soundService';
+import { Zap } from 'lucide-react';
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
   onGameOver,
@@ -22,18 +23,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GameState>(JSON.parse(JSON.stringify(INITIAL_GAME_STATE)));
-  const inputRef = useRef({ up: false, down: false, left: false, right: false });
+  const inputRef = useRef({ up: false, down: false, left: false, right: false, sprint: false });
   
-  // Joystick State
+  // Input & Touch State
   const touchRef = useRef<{
-    id: number | null;
-    startX: number;
-    startY: number;
-    curX: number;
-    curY: number;
-  }>({ id: null, startX: 0, startY: 0, curX: 0, curY: 0 });
+    joyId: number | null;
+    sprintId: number | null;
+    joyStartX: number;
+    joyStartY: number;
+    joyCurX: number;
+    joyCurY: number;
+  }>({ joyId: null, sprintId: null, joyStartX: 0, joyStartY: 0, joyCurX: 0, joyCurY: 0 });
 
-  const requestRef = useRef<number>();
+  const requestRef = useRef<number>(0);
 
   const randomRange = (min: number, max: number) => Math.random() * (max - min) + min;
 
@@ -94,6 +96,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           if (k === 's' || k === 'arrowdown') inputRef.current.down = isDown;
           if (k === 'a' || k === 'arrowleft') inputRef.current.left = isDown;
           if (k === 'd' || k === 'arrowright') inputRef.current.right = isDown;
+          if (k === 'shift') inputRef.current.sprint = isDown;
           if (isDown && k === 'escape') onTogglePause();
       };
       window.addEventListener('keydown', e => handleKey(e, true));
@@ -107,65 +110,68 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const currentCanvas = canvasRef.current;
         if (!currentCanvas) return;
         
-        // Check Pause Button Interaction first
         const padding = 20;
-        const btnSize = 40;
-        const canvasWidth = currentCanvas.width; // Use canvas width, not window width, for accuracy
-        const btnX = canvasWidth - padding - btnSize;
-        const btnY = padding;
+        const canvasWidth = currentCanvas.width; 
+        const canvasHeight = currentCanvas.height;
 
-        let pauseHit = false;
+        // 1. Pause Button Hit Check
+        const pauseBtnSize = 40;
+        const pauseBtnX = canvasWidth - padding - pauseBtnSize;
+        const pauseBtnY = padding;
+
+        // 2. Sprint Button Hit Check
+        const sprintBtnRadius = 35;
+        const sprintBtnX = canvasWidth - padding - sprintBtnRadius;
+        const sprintBtnY = canvasHeight - padding - sprintBtnRadius - 20; // Moved up slightly to avoid edge
 
         for(let i=0; i<e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
-            // Pause Button Hit Test (with generous padding)
-            if (t.clientX >= btnX - 10 && t.clientX <= btnX + btnSize + 10 &&
-                t.clientY >= btnY - 10 && t.clientY <= btnY + btnSize + 10) {
+            
+            // Check Pause
+            if (t.clientX >= pauseBtnX - 10 && t.clientX <= pauseBtnX + pauseBtnSize + 10 &&
+                t.clientY >= pauseBtnY - 10 && t.clientY <= pauseBtnY + pauseBtnSize + 10) {
                 onTogglePause();
-                pauseHit = true;
-                break;
+                continue;
             }
-        }
 
-        if (pauseHit) return;
+            // Check Sprint
+            const distSprint = Math.hypot(t.clientX - sprintBtnX, t.clientY - sprintBtnY);
+            if (distSprint < sprintBtnRadius + 15) {
+                touchRef.current.sprintId = t.identifier;
+                continue;
+            }
 
-        // Joystick Logic
-        if (touchRef.current.id === null) {
-            for(let i=0; i<e.changedTouches.length; i++) {
-                const t = e.changedTouches[i];
-                // Start joystick
-                touchRef.current = {
-                    id: t.identifier,
-                    startX: t.clientX,
-                    startY: t.clientY,
-                    curX: t.clientX,
-                    curY: t.clientY
-                };
-                break; // Only one joystick
+            // Joystick (if not other buttons and joystick free)
+            if (touchRef.current.joyId === null && t.clientX < canvasWidth / 2) {
+                touchRef.current.joyId = t.identifier;
+                touchRef.current.joyStartX = t.clientX;
+                touchRef.current.joyStartY = t.clientY;
+                touchRef.current.joyCurX = t.clientX;
+                touchRef.current.joyCurY = t.clientY;
             }
         }
       };
 
       const handleTouchMove = (e: TouchEvent) => {
         e.preventDefault();
-        if (touchRef.current.id !== null) {
-            for(let i=0; i<e.changedTouches.length; i++) {
-                const t = e.changedTouches[i];
-                if (t.identifier === touchRef.current.id) {
-                    touchRef.current.curX = t.clientX;
-                    touchRef.current.curY = t.clientY;
-                }
+        for(let i=0; i<e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            if (t.identifier === touchRef.current.joyId) {
+                touchRef.current.joyCurX = t.clientX;
+                touchRef.current.joyCurY = t.clientY;
             }
         }
       };
 
       const handleTouchEnd = (e: TouchEvent) => {
         e.preventDefault();
-        if (touchRef.current.id !== null) {
-            for(let i=0; i<e.changedTouches.length; i++) {
-                if (e.changedTouches[i].identifier === touchRef.current.id) {
-                    touchRef.current.id = null;
-                }
+        for(let i=0; i<e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            if (t.identifier === touchRef.current.joyId) {
+                touchRef.current.joyId = null;
+            }
+            if (t.identifier === touchRef.current.sprintId) {
+                touchRef.current.sprintId = null;
             }
         }
       };
@@ -195,6 +201,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (!ctx) return;
 
       const render = () => {
+          const padding = 20; // Define padding for HUD
+
           // UPDATE PHASE
           if (!paused) {
               const state = stateRef.current;
@@ -211,10 +219,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               if (inputRef.current.right) dx += 1;
 
               // Joystick Input
-              if (touchRef.current.id !== null) {
+              if (touchRef.current.joyId !== null) {
                   const maxDist = 50;
-                  const jx = touchRef.current.curX - touchRef.current.startX;
-                  const jy = touchRef.current.curY - touchRef.current.startY;
+                  const jx = touchRef.current.joyCurX - touchRef.current.joyStartX;
+                  const jy = touchRef.current.joyCurY - touchRef.current.joyStartY;
                   const dist = Math.hypot(jx, jy);
                   
                   if (dist > 10) { // Deadzone
@@ -224,50 +232,73 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   }
               }
               
-              // Normalize & Apply
+              // Movement Normalization & Sprint Logic
+              let currentSpeed = p.speed;
+              const wantsToSprint = inputRef.current.sprint || touchRef.current.sprintId !== null;
+              const isMoving = dx !== 0 || dy !== 0;
+              
+              if (wantsToSprint && p.stamina > 0 && isMoving) {
+                  p.isSprinting = true;
+                  currentSpeed *= 1.6; // 60% boost
+                  p.stamina = Math.max(0, p.stamina - 1); // drain per frame
+                  // Create sprint dust
+                  if (state.time % 5 === 0) {
+                      state.particles.push({
+                          id: `dust-${Math.random()}`,
+                          x: p.x + (Math.random()-0.5)*10, 
+                          y: p.y + p.radius,
+                          radius: 2, // Added radius
+                          velocity: {x: -dx*2, y: -dy*2},
+                          life: 15, maxLife: 15, scale: randomRange(0.5, 1.5),
+                          type: 'SMOKE', color: 'rgba(255,255,255,0.3)'
+                      });
+                  }
+              } else {
+                  p.isSprinting = false;
+                  if (p.stamina < p.maxStamina) {
+                      // Regen slower if moving, faster if standing still
+                      const regenRate = isMoving ? 0.2 : 0.5;
+                      p.stamina = Math.min(p.maxStamina, p.stamina + regenRate);
+                  }
+              }
+
+              // Apply normalized vector * speed
               if (dx || dy) {
-                  // Normalize if length > 1 to prevent super speed, 
-                  // but keep analog precision if length < 1 (from joystick)
                   const len = Math.hypot(dx, dy);
                   if (len > 1) {
                       dx /= len;
                       dy /= len;
                   }
                   
-                  // Basic Collision Check to prevent walking into obstacles
-                  const nextX = p.x + dx * p.speed;
-                  const nextY = p.y + dy * p.speed;
+                  const nextX = p.x + dx * currentSpeed;
+                  const nextY = p.y + dy * currentSpeed;
                   
                   // Bounds
                   const b = state.mapBounds;
                   let canMoveX = nextX >= b.minX && nextX <= b.maxX;
                   let canMoveY = nextY >= b.minY && nextY <= b.maxY;
 
-                  // Obstacles
+                  // Obstacles Collision
                   if (canMoveX || canMoveY) {
                       for (const obs of state.obstacles) {
                           const obsW = obs.width || obs.radius * 2;
                           const obsH = obs.height || obs.radius * 2;
                           const isRect = !!obs.width;
                           
-                          // Simple Circle-Circle or Circle-Rect check would be better
-                          // Approximate Rect check
                           if (isRect) {
-                             // Just simplistic check for now
                              if (Math.abs(nextX - obs.x) < obsW/2 + p.radius && 
                                  Math.abs(p.y - obs.y) < obsH/2 + p.radius) canMoveX = false;
                              if (Math.abs(p.x - obs.x) < obsW/2 + p.radius && 
                                  Math.abs(nextY - obs.y) < obsH/2 + p.radius) canMoveY = false;
                           } else {
-                              // Circle
                               if (Math.hypot(nextX - obs.x, p.y - obs.y) < p.radius + obs.radius) canMoveX = false;
                               if (Math.hypot(p.x - obs.x, nextY - obs.y) < p.radius + obs.radius) canMoveY = false;
                           }
                       }
                   }
 
-                  if (canMoveX) p.x += dx * p.speed;
-                  if (canMoveY) p.y += dy * p.speed;
+                  if (canMoveX) p.x += dx * currentSpeed;
+                  if (canMoveY) p.y += dy * currentSpeed;
                   
                   p.facing = dx < 0 ? 'LEFT' : dx > 0 ? 'RIGHT' : p.facing;
               }
@@ -338,82 +369,112 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   }
               });
 
-              // Projectiles Update
+              // Projectiles Update with Sub-Stepping (CCD)
               for (let i = state.projectiles.length - 1; i >= 0; i--) {
                   const proj = state.projectiles[i];
-                  proj.x += proj.velocity.x;
-                  proj.y += proj.velocity.y;
-                  proj.duration--;
                   
-                  // 1. Check Obstacle Collisions (Walls, Trees)
-                  let hitObstacle = false;
-                  for (const obs of state.obstacles) {
-                      const isRect = !!obs.width;
-                      if (isRect) {
-                          const w = obs.width!;
-                          const h = obs.height!;
-                          const distX = Math.abs(proj.x - obs.x);
-                          const distY = Math.abs(proj.y - obs.y);
+                  // Calculate steps for Continuous Collision Detection
+                  // Prevent tunneling for fast projectiles
+                  const speed = Math.hypot(proj.velocity.x, proj.velocity.y);
+                  // Check every ~6 pixels for high accuracy (enemy radius is ~12)
+                  const steps = Math.max(1, Math.ceil(speed / 6)); 
+                  const stepX = proj.velocity.x / steps;
+                  const stepY = proj.velocity.y / steps;
+                  
+                  let destroyed = false;
+                  
+                  // Spin effect
+                  proj.rotation += 0.2;
 
-                          if (distX > (w/2 + proj.radius)) continue;
-                          if (distY > (h/2 + proj.radius)) continue;
+                  for (let s = 0; s < steps; s++) {
+                      proj.x += stepX;
+                      proj.y += stepY;
 
-                          if (distX <= (w/2) || distY <= (h/2)) {
-                              hitObstacle = true;
-                              break;
-                          }
+                      // 1. Check Obstacle Collisions (Walls, Trees)
+                      let hitObstacle = false;
+                      for (const obs of state.obstacles) {
+                          const isRect = !!obs.width;
+                          if (isRect) {
+                              const w = obs.width!;
+                              const h = obs.height!;
+                              const distX = Math.abs(proj.x - obs.x);
+                              const distY = Math.abs(proj.y - obs.y);
 
-                          const dx = distX - w/2;
-                          const dy = distY - h/2;
-                          if (dx*dx + dy*dy <= (proj.radius*proj.radius)) {
-                              hitObstacle = true;
-                              break;
-                          }
-                      } else {
-                          // Circle Collision
-                          const dist = Math.hypot(proj.x - obs.x, proj.y - obs.y);
-                          if (dist < proj.radius + obs.radius) {
-                              hitObstacle = true;
-                              break;
+                              if (distX > (w/2 + proj.radius)) continue;
+                              if (distY > (h/2 + proj.radius)) continue;
+
+                              if (distX <= (w/2) || distY <= (h/2)) {
+                                  hitObstacle = true;
+                                  break;
+                              }
+
+                              const dx = distX - w/2;
+                              const dy = distY - h/2;
+                              if (dx*dx + dy*dy <= (proj.radius*proj.radius)) {
+                                  hitObstacle = true;
+                                  break;
+                              }
+                          } else {
+                              // Circle Collision
+                              const dist = Math.hypot(proj.x - obs.x, proj.y - obs.y);
+                              if (dist < proj.radius + obs.radius) {
+                                  hitObstacle = true;
+                                  break;
+                              }
                           }
                       }
-                  }
 
-                  if (hitObstacle) {
-                      state.particles.push({
-                        id: `spark-${Math.random()}`,
-                        x: proj.x, y: proj.y,
-                        velocity: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 },
-                        life: 10, maxLife: 10, scale: 1, type: 'SPARK', color: '#FFF'
-                      });
-                      state.projectiles.splice(i, 1);
-                      continue;
-                  }
+                      if (hitObstacle) {
+                          state.particles.push({
+                            id: `spark-${Math.random()}`,
+                            x: proj.x, y: proj.y,
+                            radius: 1, // Added radius
+                            velocity: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 },
+                            life: 10, maxLife: 10, scale: 1, type: 'SPARK', color: '#FFF'
+                          });
+                          destroyed = true;
+                          break;
+                      }
 
-                  // 2. Check Enemy Collisions
-                  let hit = false;
-                  for (const e of state.enemies) {
-                     // Avoid hitting same enemy twice if piercing
-                     if (proj.hitIds && proj.hitIds.includes(e.id)) continue;
+                      // 2. Check Enemy Collisions
+                      for (const e of state.enemies) {
+                         // Avoid hitting same enemy twice if piercing (frame or step)
+                         if (proj.hitIds && proj.hitIds.includes(e.id)) continue;
 
-                     if (Math.hypot(e.x - proj.x, e.y - proj.y) < e.radius + proj.radius) {
-                         e.hp -= proj.damage;
-                         state.texts.push({
-                             id: `txt-${Math.random()}`, x: e.x, y: e.y, text: `${Math.round(proj.damage)}`,
-                             life: 30, color: '#fff', velocity: {x:0, y:-1}
-                         });
-                         
-                         // Track hit
-                         if (!proj.hitIds) proj.hitIds = [];
-                         proj.hitIds.push(e.id);
+                         if (Math.hypot(e.x - proj.x, e.y - proj.y) < e.radius + proj.radius) {
+                             e.hp -= proj.damage;
+                             state.texts.push({
+                                 id: `txt-${Math.random()}`, x: e.x, y: e.y, text: `${Math.round(proj.damage)}`,
+                                 life: 30, color: '#fff', velocity: {x:0, y:-1}
+                             });
+                             
+                             if (!proj.hitIds) proj.hitIds = [];
+                             proj.hitIds.push(e.id);
 
-                         proj.pierce--;
-                         hit = true;
-                         if (proj.pierce <= 0) break;
-                     }
+                             proj.pierce--;
+                             
+                             // Impact Effect
+                             state.particles.push({
+                                id: `hit-${Math.random()}`,
+                                x: (e.x + proj.x)/2, y: (e.y + proj.y)/2,
+                                radius: 5, // Added radius
+                                velocity: { x: 0, y: 0 },
+                                life: 5, maxLife: 5, scale: 1.5, type: 'FLASH', color: '#FFF'
+                             });
+
+                             if (proj.pierce <= 0) {
+                                 destroyed = true;
+                                 break;
+                             }
+                         }
+                      }
+                      
+                      if (destroyed) break;
                   }
                   
-                  if (proj.duration <= 0 || proj.pierce <= 0) {
+                  proj.duration--;
+                  
+                  if (destroyed || proj.duration <= 0) {
                       state.projectiles.splice(i, 1);
                   }
               }
@@ -465,6 +526,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       if (soundEnabled) playSound('COLLECT');
                       state.drops.splice(i, 1);
                   }
+              }
+
+              // Particle cleanup
+              for (let i = state.particles.length - 1; i >= 0; i--) {
+                const pt = state.particles[i];
+                pt.x += pt.velocity.x;
+                pt.y += pt.velocity.y;
+                pt.life--;
+                if (pt.life <= 0) state.particles.splice(i, 1);
               }
 
               // Floating Text cleanup
@@ -627,11 +697,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           });
 
           // Joystick Rendering
-          if (touchRef.current.id !== null) {
-              const { startX, startY, curX, curY } = touchRef.current;
+          if (touchRef.current.joyId !== null) {
+              const { joyStartX, joyStartY, joyCurX, joyCurY } = touchRef.current;
               const maxDist = 50;
-              let jx = curX - startX;
-              let jy = curY - startY;
+              let jx = joyCurX - joyStartX;
+              let jy = joyCurY - joyStartY;
               const dist = Math.hypot(jx, jy);
               
               // Clamp Visual
@@ -642,7 +712,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               
               // Base
               ctx.beginPath();
-              ctx.arc(startX, startY, maxDist, 0, Math.PI * 2);
+              ctx.arc(joyStartX, joyStartY, maxDist, 0, Math.PI * 2);
               ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
               ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
               ctx.lineWidth = 2;
@@ -651,7 +721,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               
               // Stick
               ctx.beginPath();
-              ctx.arc(startX + jx, startY + jy, 25, 0, Math.PI * 2);
+              ctx.arc(joyStartX + jx, joyStartY + jy, 25, 0, Math.PI * 2);
               ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
               ctx.shadowBlur = 10;
               ctx.shadowColor = 'white';
@@ -659,8 +729,30 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               ctx.shadowBlur = 0;
           }
 
+          // Mobile Sprint Button Rendering
+          const sprintBtnRadius = 35;
+          const sprintBtnX = width - padding - sprintBtnRadius;
+          const sprintBtnY = height - padding - sprintBtnRadius - 20;
+          
+          // Button Circle
+          ctx.beginPath();
+          ctx.arc(sprintBtnX, sprintBtnY, sprintBtnRadius, 0, Math.PI * 2);
+          const sprintActive = touchRef.current.sprintId !== null || inputRef.current.sprint;
+          ctx.fillStyle = sprintActive ? 'rgba(246, 224, 94, 0.6)' : 'rgba(255, 255, 255, 0.2)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(246, 224, 94, 0.8)';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          
+          // Bolt Icon
+          ctx.fillStyle = sprintActive ? '#FFF' : '#F6E05E';
+          ctx.font = '24px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⚡', sprintBtnX, sprintBtnY);
+
+
           // --- HUD ---
-          const padding = 20;
           const barWidth = 200;
           const barHeight = 16;
 
@@ -671,32 +763,42 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.textBaseline = 'top';
           ctx.fillText(`SCORE: ${state.score}`, padding, padding);
 
-          // Health Bar (Below Score)
+          // Health Bar
           const hpY = padding + 30;
           ctx.fillStyle = '#333';
           ctx.fillRect(padding, hpY, barWidth, barHeight);
           ctx.fillStyle = '#E53E3E'; // Red
           const hpRatio = Math.max(0, state.player.hp) / state.player.maxHp;
           ctx.fillRect(padding, hpY, barWidth * hpRatio, barHeight);
-          // HP Text Overlay
           ctx.fillStyle = 'white';
           ctx.font = 'bold 10px monospace';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(`${Math.ceil(state.player.hp)}/${state.player.maxHp}`, padding + barWidth/2, hpY + barHeight/2);
 
-          // XP Bar (Below Health)
+          // XP Bar
           const xpY = hpY + barHeight + 8;
           ctx.fillStyle = '#333';
           ctx.fillRect(padding, xpY, barWidth, 8);
           ctx.fillStyle = '#38B2AC'; // Teal
           const xpRatio = state.player.xp / state.player.nextLevelXp;
           ctx.fillRect(padding, xpY, barWidth * xpRatio, 8);
-          // Level Text
           ctx.textAlign = 'left';
           ctx.font = 'bold 12px monospace';
           ctx.fillStyle = '#38B2AC';
           ctx.fillText(`LVL ${state.player.level}`, padding, xpY + 14);
+
+          // Stamina Bar (New)
+          const stY = xpY + 20;
+          ctx.fillStyle = '#333';
+          ctx.fillRect(padding, stY, barWidth * 0.7, 6); // Shorter bar
+          ctx.fillStyle = '#F6E05E'; // Yellow
+          const stRatio = Math.max(0, state.player.stamina) / state.player.maxStamina;
+          ctx.fillRect(padding, stY, (barWidth * 0.7) * stRatio, 6);
+          ctx.fillStyle = '#F6E05E';
+          ctx.font = 'bold 10px monospace';
+          ctx.fillText(`STM`, padding + (barWidth * 0.7) + 5, stY + 6);
+
 
           // Time (Top Center)
           ctx.textAlign = 'center';
@@ -706,7 +808,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           const secs = Math.floor((state.time % 3600) / 60);
           ctx.fillText(`${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`, width / 2, padding);
 
-          // Pause Button (Top Right)
+          // Pause Button
           const pauseBtnSize = 40;
           const pauseBtnX = width - padding - pauseBtnSize;
           const pauseBtnY = padding;
@@ -720,7 +822,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.lineWidth = 2;
           ctx.stroke();
 
-          // Pause Icon (II)
           ctx.fillStyle = 'white';
           const pBarW = 4;
           const pBarH = 16;

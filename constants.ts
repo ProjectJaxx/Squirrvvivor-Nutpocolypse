@@ -104,6 +104,9 @@ export const INITIAL_PLAYER: Player = {
   facing: 'RIGHT',
   emoji: '🐿️',
   characterId: 'GREY',
+  stamina: 100,
+  maxStamina: 100,
+  isSprinting: false,
 };
 
 export const INITIAL_GAME_STATE: GameState = {

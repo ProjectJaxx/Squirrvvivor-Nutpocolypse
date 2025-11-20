@@ -51,6 +51,9 @@ export interface Player extends Entity {
   filter?: string;
   xpFlashTimer?: number;
   slowedTimer?: number;
+  stamina: number;
+  maxStamina: number;
+  isSprinting?: boolean;
 }
 
 export interface StatusEffect {
