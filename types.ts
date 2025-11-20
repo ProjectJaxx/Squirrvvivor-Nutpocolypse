@@ -79,6 +79,7 @@ export interface Projectile extends Entity {
   rotation: number;
   explodeRadius?: number;
   hostile?: boolean;
+  hitIds?: string[]; // Track entities already hit to prevent multi-proc per frame/pierce
 }
 
 export interface ItemDrop extends Entity {
@@ -104,14 +105,19 @@ export interface FloatingText {
 }
 
 export interface Obstacle extends Entity {
-    width?: number;
-    height?: number;
+    width?: number;  // If present, treated as Rectangle
+    height?: number; // If present, treated as Rectangle
     hp: number;
     maxHp: number;
     destructible: boolean;
     rotation: number;
     material: 'WOOD' | 'STONE' | 'METAL' | 'CRYSTAL' | 'FLESH';
     isCover?: boolean;
+    // Distinct properties
+    explosive?: boolean;
+    explodeDamage?: number;
+    explodeRadius?: number;
+    emitType?: 'SMOKE' | 'WATER' | 'GLITTER' | 'FIRE';
 }
 
 export type WeaponType = 'NUT_THROW' | 'CROW_AURA' | 'ACORN_CANNON' | 'FEATHER_STORM';

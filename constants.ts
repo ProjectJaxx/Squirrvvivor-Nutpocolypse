@@ -45,10 +45,10 @@ export const SQUIRREL_CHARACTERS: SquirrelCharacter[] = [
     description: 'Balanced survivor. The classic choice.',
     hp: 100,
     speed: 4,
-    color: '#718096', // Slate Grey
+    color: '#A0AEC0', // Slate Grey
     emoji: '🐿️',
     radius: 16,
-    filter: 'grayscale(100%) contrast(1.1)'
+    filter: 'grayscale(100%) brightness(1.2) drop-shadow(0 0 2px rgba(255,255,255,0.3))'
   },
   {
     id: 'RED',
@@ -56,10 +56,10 @@ export const SQUIRREL_CHARACTERS: SquirrelCharacter[] = [
     description: 'Fast and agile, but fragile.',
     hp: 70,
     speed: 5.5,
-    color: '#F56565', // Red-400
+    color: '#E53E3E', // Red-600
     emoji: '🐿️',
     radius: 14,
-    filter: 'sepia(1) saturate(4) hue-rotate(-45deg) contrast(1.2)'
+    filter: 'sepia(1) saturate(500%) hue-rotate(-40deg) brightness(1.1) contrast(1.1) drop-shadow(0 0 2px rgba(229,62,62,0.5))'
   },
   {
     id: 'GIANT',
@@ -67,10 +67,10 @@ export const SQUIRREL_CHARACTERS: SquirrelCharacter[] = [
     description: 'A massive tank. High HP, slower movement.',
     hp: 160,
     speed: 3,
-    color: '#2D3748', // Dark Blue/Black
+    color: '#553C9A', // Purple-800
     emoji: '🐿️',
     radius: 22,
-    filter: 'brightness(0.5) sepia(0.2) drop-shadow(0 0 2px black)'
+    filter: 'hue-rotate(260deg) saturate(150%) brightness(0.6) contrast(1.2) drop-shadow(0 0 3px rgba(0,0,0,0.5))'
   }
 ];
 
