@@ -1,5 +1,5 @@
 
-export type AppState = 'MENU' | 'GAME' | 'LEVEL_UP' | 'GAME_OVER' | 'SETTINGS' | 'SAVE_SELECT' | 'PAUSED';
+export type AppState = 'LOADING' | 'MENU' | 'GAME' | 'LEVEL_UP' | 'GAME_OVER' | 'SETTINGS' | 'SAVE_SELECT' | 'PAUSED';
 
 export interface Vector {
   x: number;
@@ -27,7 +27,7 @@ export interface Entity {
 }
 
 export interface SquirrelCharacter {
-  id: string;
+  id:string;
   name: string;
   description: string;
   hp: number;
@@ -47,6 +47,7 @@ export interface Player extends Entity {
   speed: number;
   weapons: Weapon[];
   facing: 'LEFT' | 'RIGHT';
+  rotation: number;
   characterId?: string;
   filter?: string;
   xpFlashTimer?: number;
@@ -54,6 +55,10 @@ export interface Player extends Entity {
   stamina: number;
   maxStamina: number;
   isSprinting?: boolean;
+  invincibleTimer?: number;
+  animationState: 'IDLE' | 'WALKING';
+  animationFrame: number;
+  frameTimer: number;
 }
 
 export interface StatusEffect {
@@ -73,6 +78,9 @@ export interface Enemy extends Entity {
   shieldHp?: number;
   maxShieldHp?: number;
   hitFlashTimer?: number;
+  animationState: 'WALKING';
+  animationFrame: number;
+  frameTimer: number;
 }
 
 export interface Projectile extends Entity {
@@ -149,6 +157,11 @@ export interface Upgrade {
 
 export type StageDuration = 'STANDARD' | 'LONG' | 'EPIC';
 
+export interface ScreenShake {
+  intensity: number;
+  duration: number;
+}
+
 export interface GameState {
   player: Player;
   enemies: Enemy[];
@@ -164,6 +177,7 @@ export interface GameState {
   bossWarningTimer: number;
   mapBounds: { minX: number, maxX: number, minY: number, maxY: number };
   biome: 'PARK' | 'PARKING_LOT' | 'MARS';
+  shake: ScreenShake;
 }
 
 export interface PlayerStats {

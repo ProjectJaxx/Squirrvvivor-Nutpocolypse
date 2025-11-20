@@ -20,19 +20,16 @@ export const COLORS = {
 export const BIOME_CONFIG = {
     PARK: {
         bgColor: COLORS.parkBg,
-        obstacleEmoji: '🌳',
         bounds: 1200,
         obstacleCount: 20
     },
     PARKING_LOT: {
         bgColor: COLORS.parkingBg,
-        obstacleEmoji: '🚗',
         bounds: 1500,
         obstacleCount: 30
     },
     MARS: {
         bgColor: COLORS.marsBg,
-        obstacleEmoji: '🪨',
         bounds: 2000,
         obstacleCount: 40
     }
@@ -102,11 +99,16 @@ export const INITIAL_PLAYER: Player = {
   speed: 4,
   weapons: DEFAULT_WEAPONS,
   facing: 'RIGHT',
+  rotation: 0,
   emoji: '🐿️',
   characterId: 'GREY',
   stamina: 100,
   maxStamina: 100,
   isSprinting: false,
+  invincibleTimer: 0,
+  animationState: 'IDLE',
+  animationFrame: 0,
+  frameTimer: 0,
 };
 
 export const INITIAL_GAME_STATE: GameState = {
@@ -123,7 +125,8 @@ export const INITIAL_GAME_STATE: GameState = {
   wave: 1,
   bossWarningTimer: 0,
   biome: 'PARK',
-  mapBounds: { minX: -1200, maxX: 1200, minY: -1200, maxY: 1200 }
+  mapBounds: { minX: -1200, maxX: 1200, minY: -1200, maxY: 1200 },
+  shake: { intensity: 0, duration: 0 },
 };
 
 // Upgrades
@@ -146,4 +149,37 @@ export const STAGE_CONFIGS: Record<StageDuration, { waveDuration: number }> = {
   EPIC: {
     waveDuration: 90
   }
+};
+
+export interface SpriteSheetDefinition {
+    columns: number;
+    frameWidth: number;
+    frameHeight: number;
+    animations: {
+        [key: string]: {
+            frames: number;
+            row: number;
+            speed: number; // frames per animation frame
+        };
+    };
+}
+
+export const SPRITE_DEFS: { [key: string]: SpriteSheetDefinition } = {
+    SQUIRREL: {
+        columns: 4,
+        frameWidth: 32,
+        frameHeight: 32,
+        animations: {
+            IDLE: { frames: 4, row: 0, speed: 12 },
+            WALKING: { frames: 4, row: 1, speed: 6 },
+        }
+    },
+    ZOMBIE: {
+        columns: 4,
+        frameWidth: 32,
+        frameHeight: 32,
+        animations: {
+            WALKING: { frames: 4, row: 0, speed: 10 },
+        }
+    }
 };

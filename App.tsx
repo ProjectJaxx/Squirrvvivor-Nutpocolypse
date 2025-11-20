@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { MainMenu } from './components/MainMenu';
 import { UpgradeMenu } from './components/UpgradeMenu';
@@ -10,9 +10,11 @@ import { PauseMenu } from './components/PauseMenu';
 import { AppState, Upgrade, SquirrelCharacter, SaveSlot, StageDuration } from './types';
 import { SQUIRREL_CHARACTERS } from './constants';
 import { updateSlotStats } from './services/storageService';
+import { loadAssets } from './services/assetService';
+import { LoadingScreen } from './components/LoadingScreen';
 
 const App: React.FC = () => {
-  const [appState, setAppState] = useState<AppState>('SAVE_SELECT');
+  const [appState, setAppState] = useState<AppState>('LOADING');
   
   // Track previous state for returning from Settings
   const [previousAppState, setPreviousAppState] = useState<AppState>('MENU');
@@ -34,6 +36,15 @@ const App: React.FC = () => {
   
   const [selectedCharacter, setSelectedCharacter] = useState<SquirrelCharacter>(SQUIRREL_CHARACTERS[0]);
   const [currentSlot, setCurrentSlot] = useState<SaveSlot | null>(null);
+
+  useEffect(() => {
+    loadAssets().then(() => {
+      setAppState('SAVE_SELECT');
+    }).catch(err => {
+      console.error("Failed to load assets", err);
+      // Handle asset loading error, maybe show an error message
+    });
+  }, []);
 
   const handleSlotSelect = (slot: SaveSlot) => {
     setCurrentSlot(slot);
@@ -112,6 +123,10 @@ const App: React.FC = () => {
               onTogglePause={togglePause}
             />
         </div>
+      )}
+      
+      {appState === 'LOADING' && (
+        <LoadingScreen />
       )}
 
       {appState === 'SAVE_SELECT' && (
