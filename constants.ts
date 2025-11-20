@@ -67,10 +67,10 @@ export const SQUIRREL_CHARACTERS: SquirrelCharacter[] = [
     description: 'A massive tank. High HP, slower movement.',
     hp: 160,
     speed: 3,
-    color: '#553C9A', // Purple-800
+    color: '#3E2723', // Dark Brown/Black
     emoji: '🐿️',
     radius: 22,
-    filter: 'hue-rotate(260deg) saturate(150%) brightness(0.6) contrast(1.2) drop-shadow(0 0 3px rgba(0,0,0,0.5))'
+    filter: 'grayscale(60%) brightness(0.6) sepia(40%) contrast(1.3) drop-shadow(0 0 3px rgba(0,0,0,0.5))'
   }
 ];
 

@@ -23,6 +23,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GameState>(JSON.parse(JSON.stringify(INITIAL_GAME_STATE)));
   const inputRef = useRef({ up: false, down: false, left: false, right: false });
+  
+  // Joystick State
+  const touchRef = useRef<{
+    id: number | null;
+    startX: number;
+    startY: number;
+    curX: number;
+    curY: number;
+  }>({ id: null, startX: 0, startY: 0, curX: 0, curY: 0 });
+
   const requestRef = useRef<number>();
 
   const randomRange = (min: number, max: number) => Math.random() * (max - min) + min;
@@ -88,9 +98,68 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       };
       window.addEventListener('keydown', e => handleKey(e, true));
       window.addEventListener('keyup', e => handleKey(e, false));
+      
+      // Touch / Joystick Listeners
+      const canvas = canvasRef.current;
+      
+      const handleTouchStart = (e: TouchEvent) => {
+        e.preventDefault();
+        if (touchRef.current.id === null) {
+            for(let i=0; i<e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                // Start joystick
+                touchRef.current = {
+                    id: t.identifier,
+                    startX: t.clientX,
+                    startY: t.clientY,
+                    curX: t.clientX,
+                    curY: t.clientY
+                };
+                break; // Only one joystick
+            }
+        }
+      };
+
+      const handleTouchMove = (e: TouchEvent) => {
+        e.preventDefault();
+        if (touchRef.current.id !== null) {
+            for(let i=0; i<e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === touchRef.current.id) {
+                    touchRef.current.curX = t.clientX;
+                    touchRef.current.curY = t.clientY;
+                }
+            }
+        }
+      };
+
+      const handleTouchEnd = (e: TouchEvent) => {
+        e.preventDefault();
+        if (touchRef.current.id !== null) {
+            for(let i=0; i<e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === touchRef.current.id) {
+                    touchRef.current.id = null;
+                }
+            }
+        }
+      };
+
+      if (canvas) {
+          canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+          canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+          canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+          canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+      }
+
       return () => {
           window.removeEventListener('keydown', e => handleKey(e, true));
           window.removeEventListener('keyup', e => handleKey(e, false));
+          if (canvas) {
+             canvas.removeEventListener('touchstart', handleTouchStart);
+             canvas.removeEventListener('touchmove', handleTouchMove);
+             canvas.removeEventListener('touchend', handleTouchEnd);
+             canvas.removeEventListener('touchcancel', handleTouchEnd);
+          }
       };
   }, [onTogglePause]);
 
@@ -108,22 +177,76 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               // Player Movement
               const p = state.player;
               let dx = 0, dy = 0;
+              
+              // Keyboard Input
               if (inputRef.current.up) dy -= 1;
               if (inputRef.current.down) dy += 1;
               if (inputRef.current.left) dx -= 1;
               if (inputRef.current.right) dx += 1;
+
+              // Joystick Input
+              if (touchRef.current.id !== null) {
+                  const maxDist = 50;
+                  const jx = touchRef.current.curX - touchRef.current.startX;
+                  const jy = touchRef.current.curY - touchRef.current.startY;
+                  const dist = Math.hypot(jx, jy);
+                  
+                  if (dist > 10) { // Deadzone
+                      const scale = Math.min(dist, maxDist) / maxDist;
+                      dx = (jx / dist) * scale;
+                      dy = (jy / dist) * scale;
+                  }
+              }
               
+              // Normalize & Apply
               if (dx || dy) {
+                  // Normalize if length > 1 to prevent super speed, 
+                  // but keep analog precision if length < 1 (from joystick)
                   const len = Math.hypot(dx, dy);
-                  p.x += (dx/len) * p.speed;
-                  p.y += (dy/len) * p.speed;
+                  if (len > 1) {
+                      dx /= len;
+                      dy /= len;
+                  }
+                  
+                  // Basic Collision Check to prevent walking into obstacles
+                  const nextX = p.x + dx * p.speed;
+                  const nextY = p.y + dy * p.speed;
+                  
+                  // Bounds
+                  const b = state.mapBounds;
+                  let canMoveX = nextX >= b.minX && nextX <= b.maxX;
+                  let canMoveY = nextY >= b.minY && nextY <= b.maxY;
+
+                  // Obstacles
+                  if (canMoveX || canMoveY) {
+                      for (const obs of state.obstacles) {
+                          const obsW = obs.width || obs.radius * 2;
+                          const obsH = obs.height || obs.radius * 2;
+                          const isRect = !!obs.width;
+                          
+                          // Simple Circle-Circle or Circle-Rect check would be better
+                          // Approximate Rect check
+                          if (isRect) {
+                             // Just simplistic check for now
+                             if (Math.abs(nextX - obs.x) < obsW/2 + p.radius && 
+                                 Math.abs(p.y - obs.y) < obsH/2 + p.radius) canMoveX = false;
+                             if (Math.abs(p.x - obs.x) < obsW/2 + p.radius && 
+                                 Math.abs(nextY - obs.y) < obsH/2 + p.radius) canMoveY = false;
+                          } else {
+                              // Circle
+                              if (Math.hypot(nextX - obs.x, p.y - obs.y) < p.radius + obs.radius) canMoveX = false;
+                              if (Math.hypot(p.x - obs.x, nextY - obs.y) < p.radius + obs.radius) canMoveY = false;
+                          }
+                      }
+                  }
+
+                  if (canMoveX) p.x += dx * p.speed;
+                  if (canMoveY) p.y += dy * p.speed;
+                  
                   p.facing = dx < 0 ? 'LEFT' : dx > 0 ? 'RIGHT' : p.facing;
               }
 
-              // Clamp to Bounds
-              const b = state.mapBounds;
-              p.x = Math.max(b.minX, Math.min(b.maxX, p.x));
-              p.y = Math.max(b.minY, Math.min(b.maxY, p.y));
+              // ... (Existing Spawning, Enemy Logic, etc.) ...
               
               if (p.xpFlashTimer && p.xpFlashTimer > 0) p.xpFlashTimer--;
 
@@ -164,7 +287,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   }
               });
 
-              // Weapon Logic (Auto Fire)
+              // Weapon Logic
               p.weapons.forEach(w => {
                   if (w.cooldownTimer > 0) w.cooldownTimer--;
                   else {
@@ -182,7 +305,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                           damage: w.damage,
                           duration: 60,
                           pierce: 1,
-                          rotation: 0
+                          rotation: 0,
+                          hitIds: []
                       });
                       if (soundEnabled) playSound('NUT');
                   }
@@ -195,14 +319,68 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   proj.y += proj.velocity.y;
                   proj.duration--;
                   
+                  // 1. Check Obstacle Collisions (Walls, Trees)
+                  let hitObstacle = false;
+                  for (const obs of state.obstacles) {
+                      const isRect = !!obs.width;
+                      if (isRect) {
+                          const w = obs.width!;
+                          const h = obs.height!;
+                          const distX = Math.abs(proj.x - obs.x);
+                          const distY = Math.abs(proj.y - obs.y);
+
+                          if (distX > (w/2 + proj.radius)) continue;
+                          if (distY > (h/2 + proj.radius)) continue;
+
+                          if (distX <= (w/2) || distY <= (h/2)) {
+                              hitObstacle = true;
+                              break;
+                          }
+
+                          const dx = distX - w/2;
+                          const dy = distY - h/2;
+                          if (dx*dx + dy*dy <= (proj.radius*proj.radius)) {
+                              hitObstacle = true;
+                              break;
+                          }
+                      } else {
+                          // Circle Collision
+                          const dist = Math.hypot(proj.x - obs.x, proj.y - obs.y);
+                          if (dist < proj.radius + obs.radius) {
+                              hitObstacle = true;
+                              break;
+                          }
+                      }
+                  }
+
+                  if (hitObstacle) {
+                      state.particles.push({
+                        id: `spark-${Math.random()}`,
+                        x: proj.x, y: proj.y,
+                        velocity: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 },
+                        life: 10, maxLife: 10, scale: 1, type: 'SPARK', color: '#FFF'
+                      });
+                      state.projectiles.splice(i, 1);
+                      continue;
+                  }
+
+                  // 2. Check Enemy Collisions
                   let hit = false;
                   for (const e of state.enemies) {
+                     // Avoid hitting same enemy twice if piercing
+                     if (proj.hitIds && proj.hitIds.includes(e.id)) continue;
+
                      if (Math.hypot(e.x - proj.x, e.y - proj.y) < e.radius + proj.radius) {
                          e.hp -= proj.damage;
                          state.texts.push({
                              id: `txt-${Math.random()}`, x: e.x, y: e.y, text: `${Math.round(proj.damage)}`,
                              life: 30, color: '#fff', velocity: {x:0, y:-1}
                          });
+                         
+                         // Track hit
+                         if (!proj.hitIds) proj.hitIds = [];
+                         proj.hitIds.push(e.id);
+
                          proj.pierce--;
                          hit = true;
                          if (proj.pierce <= 0) break;
@@ -422,6 +600,39 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               ctx.fillText(t.text, t.x - camX, t.y - camY);
           });
 
+          // Joystick Rendering
+          if (touchRef.current.id !== null) {
+              const { startX, startY, curX, curY } = touchRef.current;
+              const maxDist = 50;
+              let jx = curX - startX;
+              let jy = curY - startY;
+              const dist = Math.hypot(jx, jy);
+              
+              // Clamp Visual
+              if (dist > maxDist) {
+                  jx = (jx / dist) * maxDist;
+                  jy = (jy / dist) * maxDist;
+              }
+              
+              // Base
+              ctx.beginPath();
+              ctx.arc(startX, startY, maxDist, 0, Math.PI * 2);
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+              ctx.lineWidth = 2;
+              ctx.fill();
+              ctx.stroke();
+              
+              // Stick
+              ctx.beginPath();
+              ctx.arc(startX + jx, startY + jy, 25, 0, Math.PI * 2);
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+              ctx.shadowBlur = 10;
+              ctx.shadowColor = 'white';
+              ctx.fill();
+              ctx.shadowBlur = 0;
+          }
+
           // HUD
           ctx.fillStyle = 'white';
           ctx.font = 'bold 20px monospace';
@@ -442,5 +653,5 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       return () => cancelAnimationFrame(requestRef.current!);
   }, [paused, soundEnabled, stageDuration, onGameOver, onLevelUp]);
 
-  return <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="block bg-gray-900" />;
+  return <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="block bg-gray-900 touch-none" />;
 };
