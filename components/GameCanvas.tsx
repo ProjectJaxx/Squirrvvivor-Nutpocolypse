@@ -104,6 +104,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       
       const handleTouchStart = (e: TouchEvent) => {
         e.preventDefault();
+        const currentCanvas = canvasRef.current;
+        if (!currentCanvas) return;
+        
+        // Check Pause Button Interaction first
+        const padding = 20;
+        const btnSize = 40;
+        const canvasWidth = currentCanvas.width; // Use canvas width, not window width, for accuracy
+        const btnX = canvasWidth - padding - btnSize;
+        const btnY = padding;
+
+        let pauseHit = false;
+
+        for(let i=0; i<e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            // Pause Button Hit Test (with generous padding)
+            if (t.clientX >= btnX - 10 && t.clientX <= btnX + btnSize + 10 &&
+                t.clientY >= btnY - 10 && t.clientY <= btnY + btnSize + 10) {
+                onTogglePause();
+                pauseHit = true;
+                break;
+            }
+        }
+
+        if (pauseHit) return;
+
+        // Joystick Logic
         if (touchRef.current.id === null) {
             for(let i=0; i<e.changedTouches.length; i++) {
                 const t = e.changedTouches[i];
@@ -633,18 +659,76 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               ctx.shadowBlur = 0;
           }
 
-          // HUD
+          // --- HUD ---
+          const padding = 20;
+          const barWidth = 200;
+          const barHeight = 16;
+
+          // Score
           ctx.fillStyle = 'white';
           ctx.font = 'bold 20px monospace';
-          ctx.fillText(`SCORE: ${state.score}`, 20, 30);
-          ctx.fillText(`HP: ${Math.ceil(Math.max(0, state.player.hp))}/${state.player.maxHp}`, 20, 60);
-          ctx.fillText(`TIME: ${Math.floor(state.time / 60)}s`, 20, 90);
-          
-          // Simple Level Bar
-          ctx.fillStyle = '#444';
-          ctx.fillRect(20, 100, 200, 10);
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(`SCORE: ${state.score}`, padding, padding);
+
+          // Health Bar (Below Score)
+          const hpY = padding + 30;
+          ctx.fillStyle = '#333';
+          ctx.fillRect(padding, hpY, barWidth, barHeight);
+          ctx.fillStyle = '#E53E3E'; // Red
+          const hpRatio = Math.max(0, state.player.hp) / state.player.maxHp;
+          ctx.fillRect(padding, hpY, barWidth * hpRatio, barHeight);
+          // HP Text Overlay
+          ctx.fillStyle = 'white';
+          ctx.font = 'bold 10px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${Math.ceil(state.player.hp)}/${state.player.maxHp}`, padding + barWidth/2, hpY + barHeight/2);
+
+          // XP Bar (Below Health)
+          const xpY = hpY + barHeight + 8;
+          ctx.fillStyle = '#333';
+          ctx.fillRect(padding, xpY, barWidth, 8);
+          ctx.fillStyle = '#38B2AC'; // Teal
+          const xpRatio = state.player.xp / state.player.nextLevelXp;
+          ctx.fillRect(padding, xpY, barWidth * xpRatio, 8);
+          // Level Text
+          ctx.textAlign = 'left';
+          ctx.font = 'bold 12px monospace';
           ctx.fillStyle = '#38B2AC';
-          ctx.fillRect(20, 100, (state.player.xp / state.player.nextLevelXp) * 200, 10);
+          ctx.fillText(`LVL ${state.player.level}`, padding, xpY + 14);
+
+          // Time (Top Center)
+          ctx.textAlign = 'center';
+          ctx.fillStyle = 'white';
+          ctx.font = 'bold 24px monospace';
+          const mins = Math.floor(state.time / 3600);
+          const secs = Math.floor((state.time % 3600) / 60);
+          ctx.fillText(`${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`, width / 2, padding);
+
+          // Pause Button (Top Right)
+          const pauseBtnSize = 40;
+          const pauseBtnX = width - padding - pauseBtnSize;
+          const pauseBtnY = padding;
+
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(pauseBtnX, pauseBtnY, pauseBtnSize, pauseBtnSize, 8);
+          else ctx.rect(pauseBtnX, pauseBtnY, pauseBtnSize, pauseBtnSize);
+          ctx.fill();
+          ctx.strokeStyle = 'white';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // Pause Icon (II)
+          ctx.fillStyle = 'white';
+          const pBarW = 4;
+          const pBarH = 16;
+          const pGap = 6;
+          const pCenterX = pauseBtnX + pauseBtnSize/2;
+          const pCenterY = pauseBtnY + pauseBtnSize/2;
+          ctx.fillRect(pCenterX - pGap/2 - pBarW, pCenterY - pBarH/2, pBarW, pBarH);
+          ctx.fillRect(pCenterX + pGap/2, pCenterY - pBarH/2, pBarW, pBarH);
 
           requestRef.current = requestAnimationFrame(render);
       };
