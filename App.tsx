@@ -73,6 +73,8 @@ const App: React.FC = () => {
                 // Base magnet radius is defined in constants (150), but stored on player state usually.
                 // We'll pass it via character prop to init.
                 char.magnetRadius = (char.magnetRadius || 150) + totalBoost;
+            } else if (def.statKey === 'maxCompanions') {
+                char.maxCompanions = (char.maxCompanions || 0) + totalBoost;
             }
         }
     });

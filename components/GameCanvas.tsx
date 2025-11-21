@@ -2,7 +2,7 @@
 import React, { useEffect, useRef } from 'react';
 import { 
     GameCanvasProps, GameState, Entity, Player, Enemy, Projectile, 
-    ItemDrop, Particle, FloatingText, Obstacle, Upgrade, Vector 
+    ItemDrop, Particle, FloatingText, Obstacle, Upgrade, Vector, Companion 
 } from '../types';
 import { 
     COLORS, BIOME_CONFIG, 
@@ -20,6 +20,40 @@ const shuffle = <T,>(array: T[]): T[] => {
         [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
     }
     return newArray;
+};
+
+// Helper to centralize UI layout logic for responsiveness
+const getUILayout = (width: number, height: number) => {
+    const isMobile = width < 768;
+    const uiScale = isMobile ? 1.2 : 1.0; // Larger UI on mobile
+    
+    // Safe zones (avoid notches and home bars)
+    const safeMarginX = 20;
+    const safeMarginY = isMobile ? 40 : 20; 
+
+    // Pause Button (Top Right)
+    const pauseSize = 40 * (isMobile ? 1.1 : 1.0);
+    const pauseX = width - safeMarginX - pauseSize;
+    const pauseY = 20;
+
+    // Sprint Button (Bottom Right - Primary Action)
+    const sprintRadius = isMobile ? 45 : 35;
+    const sprintX = width - safeMarginX - sprintRadius - (isMobile ? 10 : 0);
+    const sprintY = height - safeMarginY - sprintRadius;
+
+    // Ability Button (Left of Sprint - Secondary Action)
+    // Offset nicely for thumb arc
+    const abilityRadius = isMobile ? 38 : 30;
+    const abilityX = sprintX - (isMobile ? 110 : 90);
+    const abilityY = sprintY + (isMobile ? 10 : 0); 
+
+    return {
+        isMobile,
+        uiScale,
+        pause: { x: pauseX, y: pauseY, w: pauseSize, h: pauseSize },
+        sprint: { x: sprintX, y: sprintY, r: sprintRadius, hitR: sprintRadius * 1.4 },
+        ability: { x: abilityX, y: abilityY, r: abilityRadius, hitR: abilityRadius * 1.4 }
+    };
 };
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
@@ -41,11 +75,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const touchRef = useRef<{
     joyId: number | null;
     sprintId: number | null;
+    abilityId: number | null;
     joyStartX: number;
     joyStartY: number;
     joyCurX: number;
     joyCurY: number;
-  }>({ joyId: null, sprintId: null, joyStartX: 0, joyStartY: 0, joyCurX: 0, joyCurY: 0 });
+  }>({ joyId: null, sprintId: null, abilityId: null, joyStartX: 0, joyStartY: 0, joyCurX: 0, joyCurY: 0 });
 
   const requestRef = useRef<number>(0);
 
@@ -122,6 +157,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           const localX = dx * cos - dy * sin;
           const localY = dx * sin + dy * cos;
 
+          // Expand rectangle by padding
           const halfW = (obs.width / 2) + padding;
           const halfH = (obs.height / 2) + padding;
 
@@ -131,7 +167,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           const distLocalX = localX - closestX;
           const distLocalY = localY - closestY;
           
-          return (distLocalX * distLocalX + distLocalY * distLocalY) < ((entityRadius + padding) * (entityRadius + padding));
+          // Strict check: is the distance from the (possibly expanded) rectangle < entityRadius?
+          return (distLocalX * distLocalX + distLocalY * distLocalY) < (entityRadius * entityRadius);
       } else {
           const dist = Math.hypot(entityX - obs.x, entityY - obs.y);
           return dist < entityRadius + obs.radius + padding;
@@ -162,6 +199,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     state.player.filter = character.filter;
     // Initialize upgraded stats if provided by character prop (from App.tsx calculation)
     if (character.magnetRadius) state.player.magnetRadius = character.magnetRadius;
+    if (character.maxCompanions) state.player.maxCompanions = character.maxCompanions;
     
     state.player.airborneTimer = 0;
     
@@ -169,6 +207,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     state.player.activeAbility = character.activeAbility 
       ? JSON.parse(JSON.stringify(character.activeAbility)) 
       : { ...INITIAL_GAME_STATE.player.activeAbility };
+    
+    // Initialize Companions (Scurry Upgrade)
+    if (state.player.maxCompanions && state.player.maxCompanions > 0) {
+        for (let i = 0; i < state.player.maxCompanions; i++) {
+            state.companions.push({
+                id: `comp-${i}`,
+                x: state.player.x,
+                y: state.player.y,
+                radius: 10,
+                type: 'COMPANION',
+                color: '#F6E05E', // Yellowish
+                offsetAngle: (Math.PI * 2 / state.player.maxCompanions) * i,
+                cooldown: 60, // Shoot every 1s
+                cooldownTimer: Math.random() * 60
+            });
+        }
+    }
     
     state.biome = 'PARK'; 
     const biomeData = BIOME_CONFIG[state.biome];
@@ -285,52 +340,44 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const currentCanvas = canvasRef.current;
         if (!currentCanvas) return;
         
-        const padding = 20;
-        const canvasWidth = currentCanvas.width; 
-        const canvasHeight = currentCanvas.height;
-
-        const pauseBtnSize = 40;
-        const pauseBtnX = canvasWidth - padding - pauseBtnSize;
-        const pauseBtnY = padding;
-
-        // Push buttons up slightly to avoid home bars on mobile
-        const bottomOffset = 40;
-        const sprintBtnRadius = 35;
-        const sprintBtnX = canvasWidth - padding - sprintBtnRadius;
-        const sprintBtnY = canvasHeight - padding - sprintBtnRadius - bottomOffset; 
-
-        const abilityBtnRadius = 30;
-        const abilityBtnX = sprintBtnX - 90;
-        const abilityBtnY = sprintBtnY + 10;
+        const { width, height } = currentCanvas;
+        const layout = getUILayout(width, height);
 
         for(let i=0; i<e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
+            const tx = t.clientX;
+            const ty = t.clientY;
             
-            if (t.clientX >= pauseBtnX - 10 && t.clientX <= pauseBtnX + pauseBtnSize + 10 &&
-                t.clientY >= pauseBtnY - 10 && t.clientY <= pauseBtnY + pauseBtnSize + 10) {
+            // Check Pause (Top Right)
+            if (tx >= layout.pause.x - 20 && tx <= layout.pause.x + layout.pause.w + 20 &&
+                ty >= layout.pause.y - 20 && ty <= layout.pause.y + layout.pause.h + 20) {
                 onTogglePause();
                 continue;
             }
 
-            const distSprint = Math.hypot(t.clientX - sprintBtnX, t.clientY - sprintBtnY);
-            if (distSprint < sprintBtnRadius + 15) {
+            // Check Sprint (Bottom Right) - Use hitR for generous hit detection
+            const distSprint = Math.hypot(tx - layout.sprint.x, ty - layout.sprint.y);
+            if (distSprint < layout.sprint.hitR) {
                 touchRef.current.sprintId = t.identifier;
                 continue;
             }
 
-            const distAbility = Math.hypot(t.clientX - abilityBtnX, t.clientY - abilityBtnY);
-            if (distAbility < abilityBtnRadius + 15) {
-                inputRef.current.ability = true;
-                setTimeout(() => { inputRef.current.ability = false; }, 100); 
+            // Check Ability (Left of Sprint)
+            const distAbility = Math.hypot(tx - layout.ability.x, ty - layout.ability.y);
+            if (distAbility < layout.ability.hitR) {
+                touchRef.current.abilityId = t.identifier;
+                inputRef.current.ability = true; // Set ability active while held
                 continue;
             }
 
-            if (touchRef.current.joyId === null && t.clientX < canvasWidth / 2) {
+            // Joystick (Left Half of Screen)
+            // Only start joystick if not touching buttons and on left side
+            if (touchRef.current.joyId === null && tx < width / 2) {
                 touchRef.current.joyId = t.identifier;
-                touchRef.current.joyStartX = t.clientX;
-                touchRef.current.joyStartY = t.clientY;
-                touchRef.current.joyCurX = t.clientX;
-                touchRef.current.joyCurY = t.clientY;
+                touchRef.current.joyStartX = tx;
+                touchRef.current.joyStartY = ty;
+                touchRef.current.joyCurX = tx;
+                touchRef.current.joyCurY = ty;
             }
         }
       };
@@ -355,6 +402,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             }
             if (t.identifier === touchRef.current.sprintId) {
                 touchRef.current.sprintId = null;
+            }
+            if (t.identifier === touchRef.current.abilityId) {
+                touchRef.current.abilityId = null;
+                inputRef.current.ability = false; // Release ability
             }
         }
       };
@@ -383,7 +434,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       if (!ctx) return;
 
       const render = () => {
-          const padding = 20; 
+          const { width, height } = ctx.canvas;
+          const layout = getUILayout(width, height);
 
           if (!paused) {
               const state = stateRef.current;
@@ -420,12 +472,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               if (inputRef.current.right) dx += 1;
 
               if (touchRef.current.joyId !== null) {
-                  const maxDist = 50;
+                  const maxDist = 60; // Joystick sensitivity range
                   const jx = touchRef.current.joyCurX - touchRef.current.joyStartX;
                   const jy = touchRef.current.joyCurY - touchRef.current.joyStartY;
                   const dist = Math.hypot(jx, jy);
                   
-                  if (dist > 10) { 
+                  if (dist > 5) { 
                       const scale = Math.min(dist, maxDist) / maxDist;
                       dx = (jx / dist) * scale;
                       dy = (jy / dist) * scale;
@@ -496,6 +548,54 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   
                   p.facing = dx < 0 ? 'LEFT' : dx > 0 ? 'RIGHT' : p.facing;
               }
+
+              // --- COMPANION LOGIC (Scurry Upgrade) ---
+              state.companions.forEach((comp, index) => {
+                   const angleOffset = (state.time * 0.01) + comp.offsetAngle; 
+                   const formationRadius = 45; 
+                   const targetX = p.x + Math.cos(angleOffset) * formationRadius;
+                   const targetY = p.y + Math.sin(angleOffset) * formationRadius;
+                   
+                   const distToFormation = Math.hypot(targetX - comp.x, targetY - comp.y);
+                   let lerpSpeed = 0.1; 
+                   
+                   if (p.isSprinting) {
+                       lerpSpeed = 0.3; 
+                   } else if (distToFormation > 100) {
+                       lerpSpeed = 0.2; 
+                   }
+
+                   comp.x += (targetX - comp.x) * lerpSpeed;
+                   comp.y += (targetY - comp.y) * lerpSpeed;
+
+                   // Shooting Logic
+                   if (comp.cooldownTimer > 0) comp.cooldownTimer--;
+                   else {
+                        if (state.enemies.length > 0) {
+                            let closestEnemy: Enemy | null = null;
+                            let closestDist = Infinity;
+                            for (const e of state.enemies) {
+                                const d = Math.hypot(e.x - comp.x, e.y - comp.y);
+                                if (d < closestDist) {
+                                    closestDist = d;
+                                    closestEnemy = e;
+                                }
+                            }
+
+                            if (closestEnemy && closestDist < 350) {
+                                comp.cooldownTimer = comp.cooldown;
+                                const angle = Math.atan2(closestEnemy.y - comp.y, closestEnemy.x - comp.x) + (Math.random() - 0.5) * 0.1;
+                                
+                                state.projectiles.push({
+                                    id: `c-nut-${state.time}-${Math.random()}`, x: comp.x, y: comp.y, 
+                                    radius: 3, type: 'NUT_SHELL', color: '#FAF089',
+                                    velocity: { x: Math.cos(angle) * 10, y: Math.sin(angle) * 10 },
+                                    damage: 8, duration: 40, pierce: 1, rotation: 0, hitIds: []
+                                });
+                            }
+                        }
+                   }
+              });
 
               const ability = p.activeAbility;
               if (ability) {
@@ -632,7 +732,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   }
               }
 
-              state.enemies.forEach(e => {
+              // --- ENEMY LOGIC ---
+              const enemyCount = state.enemies.length;
+              for (let i=0; i<enemyCount; i++) {
+                  const e = state.enemies[i];
                   let speedMod = 1;
                   
                   e.statusEffects = e.statusEffects.filter(ef => ef.duration > 0);
@@ -654,30 +757,38 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   let dx = p.x - e.x;
                   let dy = p.y - e.y;
                   
+                  let sepX = 0;
+                  let sepY = 0;
+                  
+                  for (let j=0; j<enemyCount; j++) {
+                      if (i === j) continue;
+                      const other = state.enemies[j];
+                      const distSq = (e.x - other.x)**2 + (e.y - other.y)**2;
+                      const minDist = e.radius + other.radius;
+                      
+                      if (distSq < minDist * minDist && distSq > 0) {
+                          const dist = Math.sqrt(distSq);
+                          const push = (minDist - dist) / minDist; 
+                          const pushStr = 0.5; 
+                          sepX -= ((other.x - e.x) / dist) * push * pushStr;
+                          sepY -= ((other.y - e.y) / dist) * push * pushStr;
+                      }
+                  }
+
                   if (e.type === 'SWARM_ZOMBIE') {
                       const distToPlayer = Math.hypot(dx, dy);
                       let moveX = dx / distToPlayer;
                       let moveY = dy / distToPlayer;
-
-                      let sepX = 0, sepY = 0; 
+                      
                       let cohX = 0, cohY = 0; 
                       let neighborCount = 0;
 
                       state.enemies.forEach(other => {
                           if (e.id === other.id) return;
                           if (other.type !== 'SWARM_ZOMBIE') return;
-
                           const dist = Math.hypot(e.x - other.x, e.y - other.y);
                           if (dist < 150) { 
-                              cohX += other.x;
-                              cohY += other.y;
-                              neighborCount++;
-
-                              if (dist < 30) {
-                                  const pushFactor = (30 - dist) / 30; 
-                                  sepX -= (other.x - e.x) / dist * pushFactor;
-                                  sepY -= (other.y - e.y) / dist * pushFactor;
-                              }
+                              cohX += other.x; cohY += other.y; neighborCount++;
                           }
                       });
 
@@ -685,8 +796,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                           cohX = (cohX / neighborCount) - e.x;
                           cohY = (cohY / neighborCount) - e.y;
                           const cohLen = Math.hypot(cohX, cohY) || 1;
-                          cohX /= cohLen;
-                          cohY /= cohLen;
+                          cohX /= cohLen; cohY /= cohLen;
 
                           if (neighborCount > 2) {
                               speedMod *= 1.3; 
@@ -700,15 +810,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                           }
                       }
 
-                      const finalDx = (moveX * 1.0) + (sepX * 1.5) + (cohX * 0.5);
-                      const finalDy = (moveY * 1.0) + (sepY * 1.5) + (cohY * 0.5);
-
+                      const finalDx = (moveX * 1.0) + (sepX * 2.0) + (cohX * 0.5);
+                      const finalDy = (moveY * 1.0) + (sepY * 2.0) + (cohY * 0.5);
                       const finalLen = Math.hypot(finalDx, finalDy) || 1;
                       e.x += (finalDx / finalLen) * e.speed * speedMod;
                       e.y += (finalDy / finalLen) * e.speed * speedMod;
 
                   } else {
-                      const angle = Math.atan2(dy, dx);
+                      const distToPlayer = Math.hypot(dx, dy);
+                      let moveX = dx / distToPlayer;
+                      let moveY = dy / distToPlayer;
+                      
+                      const finalDx = moveX + sepX;
+                      const finalDy = moveY + sepY;
+                      
+                      const angle = Math.atan2(finalDy, finalDx);
                       e.x += Math.cos(angle) * e.speed * speedMod;
                       e.y += Math.sin(angle) * e.speed * speedMod;
                   }
@@ -720,7 +836,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   }
 
                   if ((!p.invincibleTimer || p.invincibleTimer <= 0) && !p.airborneTimer) {
-                      if (Math.hypot(p.x - e.x, p.y - e.y) < p.radius + e.radius) {
+                      const hitDist = p.radius + e.radius - 4; 
+                      if (Math.hypot(p.x - e.x, p.y - e.y) < hitDist) {
                          let dmg = e.damage;
                          if (isInCover) {
                              dmg = Math.ceil(dmg * 0.5); 
@@ -741,7 +858,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                          }
                       }
                   }
-              });
+              }
 
               p.weapons.forEach(w => {
                   if (w.cooldownTimer > 0) w.cooldownTimer--;
@@ -773,17 +890,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       if (soundEnabled) playSound('NUT');
                   } 
                   else if (w.type === 'CROW_AURA') {
-                      // Crows tick for damage independently of their rotation
                       if (w.cooldownTimer <= 0) {
                            w.cooldownTimer = w.cooldown;
                            
                            let hit = false;
-                           // Check collision for all crows
                            for (let i = 0; i < w.amount; i++) {
                                 const angle = (state.time * w.speed) + (i * (Math.PI * 2 / w.amount));
                                 const cx = p.x + Math.cos(angle) * w.area;
                                 const cy = p.y + Math.sin(angle) * w.area;
-                                const crowRadius = 25; // Generous hit box
+                                const crowRadius = 25; 
 
                                 for (const e of state.enemies) {
                                     if (Math.hypot(e.x - cx, e.y - cy) < e.radius + crowRadius) {
@@ -795,10 +910,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                         
                                         state.particles.push({
                                             id: `hit-${Math.random()}`, x: cx, y: cy, radius: 2,
-                                            velocity: {x:0, y:0}, life: 10, maxLife: 10, scale: 1, type: 'SPARK', color: '#D53F8C'
+                                            velocity: {x:0, y:0}, life: 10, maxLife: 10, scale: 1, type: 'SPARK', 
+                                            color: w.damage > 15 ? '#6B46C1' : '#D53F8C' 
                                         });
                                         
-                                        // Minor knockback away from player (keeps enemies at bay)
                                         const kAngle = Math.atan2(e.y - p.y, e.x - p.x);
                                         e.x += Math.cos(kAngle) * 3;
                                         e.y += Math.sin(kAngle) * 3;
@@ -986,36 +1101,54 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               for (let i = state.drops.length - 1; i >= 0; i--) {
                   const d = state.drops[i];
                   const dist = Math.hypot(p.x - d.x, p.y - d.y);
-                  
                   const pickupRange = p.magnetRadius || 150;
 
                   if (dist < pickupRange) { 
-                      // Magnet effect
                       d.x += (p.x - d.x) * 0.15; 
                       d.y += (p.y - d.y) * 0.15; 
                   }
 
                   if (dist < p.radius + d.radius + (p.airborneTimer ? 20 : 0)) {
                       if (d.kind === 'XP') {
-                          // XP also counts as Nuts
-                          state.collectedNuts += Math.ceil(d.value / 10); // 1 Nut per ~10 XP value
-
+                          state.collectedNuts += Math.ceil(d.value / 10); 
                           p.xp += d.value; 
-                          p.xpFlashTimer = 15; 
+                          p.xpFlashTimer = 20; 
 
-                          // Visual Stat-Up Particles
-                          for(let k=0; k<4; k++) {
+                          for(let k=0; k<3; k++) {
                               state.particles.push({
-                                  id: `xp-up-${Math.random()}`, 
-                                  x: p.x + (Math.random() - 0.5) * 15, 
-                                  y: p.y + (Math.random() - 0.5) * 15, 
-                                  radius: Math.random() * 2 + 1, 
-                                  velocity: {x: (Math.random()-0.5), y: -2 - Math.random()}, // Upward float
-                                  life: 25, 
-                                  maxLife: 25, 
+                                  id: `xp-pop-${Math.random()}`, 
+                                  x: p.x + randomRange(-10, 10), 
+                                  y: p.y + randomRange(-10, 10), 
+                                  radius: randomRange(2, 3), 
+                                  velocity: {
+                                      x: 0, 
+                                      y: -randomRange(1, 3) 
+                                  }, 
+                                  life: 30, 
+                                  maxLife: 30, 
                                   scale: 1, 
                                   type: 'SPARK', 
-                                  color: Math.random() > 0.5 ? '#4FD1C5' : '#63B3ED'
+                                  color: '#68D391' 
+                              });
+                          }
+
+                          for(let k=0; k<3; k++) {
+                              const angle = Math.random() * Math.PI * 2;
+                              const dist = 40;
+                              state.particles.push({
+                                  id: `xp-in-${Math.random()}`, 
+                                  x: p.x + Math.cos(angle) * dist, 
+                                  y: p.y + Math.sin(angle) * dist, 
+                                  radius: Math.random() * 2 + 1, 
+                                  velocity: {
+                                      x: -Math.cos(angle) * 3, 
+                                      y: -Math.sin(angle) * 3
+                                  }, 
+                                  life: 15, 
+                                  maxLife: 15, 
+                                  scale: 1, 
+                                  type: 'SPARK', 
+                                  color: '#4FD1C5'
                               });
                           }
 
@@ -1047,7 +1180,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }
 
           const state = stateRef.current;
-          const { width, height } = ctx.canvas;
           
           // DRAW BACKGROUND PATTERN
           let camX = state.player.x - width / 2;
@@ -1060,7 +1192,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
           if (bgPatternRef.current) {
               ctx.save();
-              // Anchor pattern to world coordinates by translating the pattern origin
               const matrix = new DOMMatrix();
               matrix.translateSelf(-camX, -camY);
               bgPatternRef.current.setTransform(matrix);
@@ -1075,7 +1206,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
           ctx.imageSmoothingEnabled = false; 
 
-          // DRAW GRID (Faint overlay)
+          // DRAW GRID
           ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.lineWidth = 1;
           const gridSize = 100;
           const startX = Math.floor(camX / gridSize) * gridSize;
@@ -1083,31 +1214,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           for(let x = startX; x < camX + width; x += gridSize) { ctx.beginPath(); ctx.moveTo(x - camX, 0); ctx.lineTo(x - camX, height); ctx.stroke(); }
           for(let y = startY; y < camY + height; y += gridSize) { ctx.beginPath(); ctx.moveTo(0, y - camY); ctx.lineTo(width, y - camY); ctx.stroke(); }
 
-          // DRAW CONCRETE FENCE BORDER
+          // DRAW FENCE
           const bounds = state.mapBounds;
           const fenceSize = 40;
-          
-          ctx.font = `${fenceSize}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
+          ctx.font = `${fenceSize}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
-          // Helper to draw a line of emojis
           const drawFenceLine = (x1: number, y1: number, x2: number, y2: number) => {
               const dist = Math.hypot(x2 - x1, y2 - y1);
               const count = Math.ceil(dist / fenceSize);
               for(let i=0; i<=count; i++) {
                   const fx = x1 + (x2 - x1) * (i/count);
                   const fy = y1 + (y2 - y1) * (i/count);
-                  // Cull offscreen
                   if (fx < camX - fenceSize || fx > camX + width + fenceSize || fy < camY - fenceSize || fy > camY + height + fenceSize) continue;
                   ctx.fillText('🧱', fx - camX, fy - camY);
               }
           };
 
-          drawFenceLine(bounds.minX, bounds.minY, bounds.maxX, bounds.minY); // Top
-          drawFenceLine(bounds.minX, bounds.maxY, bounds.maxX, bounds.maxY); // Bottom
-          drawFenceLine(bounds.minX, bounds.minY, bounds.minX, bounds.maxY); // Left
-          drawFenceLine(bounds.maxX, bounds.minY, bounds.maxX, bounds.maxY); // Right
+          drawFenceLine(bounds.minX, bounds.minY, bounds.maxX, bounds.minY); 
+          drawFenceLine(bounds.minX, bounds.maxY, bounds.maxX, bounds.maxY); 
+          drawFenceLine(bounds.minX, bounds.minY, bounds.minX, bounds.maxY); 
+          drawFenceLine(bounds.maxX, bounds.minY, bounds.maxX, bounds.maxY); 
 
           const drawEntity = (e: Entity) => {
              if (e.type === 'EXPLOSION') {
@@ -1125,7 +1251,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 return;
              }
              
-             // Visibility Cull
              if (e.x + e.radius < camX || e.x - e.radius > camX + width || e.y + e.radius < camY || e.y - e.radius > camY + height) return;
 
              let visualY = e.y;
@@ -1143,7 +1268,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              ctx.save();
              ctx.translate(e.x - camX, visualY - camY);
              
-             // Shared Shadow
              ctx.save();
              ctx.translate(0, e.y - visualY); 
              ctx.fillStyle = 'rgba(0,0,0,0.3)';
@@ -1156,14 +1280,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                  const p = e as Player;
                  if (p.invincibleTimer && p.invincibleTimer > 0 && state.time % 8 < 4) ctx.globalAlpha = 0.5;
                  
-                 // XP Stat-Up Visuals
                  if (p.xpFlashTimer && p.xpFlashTimer > 0) { 
                     ctx.shadowColor = '#4FD1C5'; 
-                    ctx.shadowBlur = 20 * (p.xpFlashTimer / 15); 
-                    
-                    // Scale Pulse
-                    const pulse = 1 + (p.xpFlashTimer / 15) * 0.15;
+                    ctx.shadowBlur = 30 * (p.xpFlashTimer / 20); 
+                    const pulse = 1 + (p.xpFlashTimer / 20) * 0.2;
                     ctx.scale(pulse, pulse);
+                    ctx.filter = `brightness(${1 + (p.xpFlashTimer/20)}) sepia(${p.xpFlashTimer/40})`;
                  }
                  
                  if (p.activeAbility && p.activeAbility.activeTimer > 0) {
@@ -1193,7 +1315,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              ctx.strokeStyle = '#1a202c'; 
              ctx.lineWidth = 2.5;
 
-             // EMOJI RENDER HELPER
              const drawEmoji = (emoji: string, sizeMultiplier = 2, rotate = 0, bounce = 0) => {
                 ctx.font = `${e.radius * sizeMultiplier}px sans-serif`;
                 ctx.textAlign = 'center';
@@ -1208,6 +1329,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     const p = e as Player;
                     const sheet = assets.PLAYER_SKIN;
                     const def = SPRITE_DEFS.SQUIRREL;
+                    const scaleFactor = (p.radius * 2.4) / def.frameWidth; 
 
                     if (sheet) {
                       const anim = def.animations[p.animationState];
@@ -1220,22 +1342,43 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       const sy = row * def.frameHeight;
 
                       ctx.save();
-                      if (!assets.PLAYER_SKIN && p.filter) ctx.filter = p.filter; 
                       if (p.facing === 'LEFT') ctx.scale(-1, 1);
                       if (p.airborneTimer && p.airborneTimer > 0) ctx.scale(1.2, 1.2);
-
-                      ctx.drawImage(
-                          sheet,
-                          sx, sy, def.frameWidth, def.frameHeight,
-                          -def.frameWidth / 2, -def.frameHeight / 2, def.frameWidth, def.frameHeight
-                      );
+                      const drawW = def.frameWidth * scaleFactor;
+                      const drawH = def.frameHeight * scaleFactor;
+                      ctx.drawImage(sheet, sx, sy, def.frameWidth, def.frameHeight, -drawW / 2, -drawH / 2, drawW, drawH);
                       ctx.restore();
                     } else {
                         const bounce = p.animationState === 'WALKING' ? Math.abs(Math.sin(state.time * 0.3)) * 4 : 0;
                         ctx.save();
                         if (p.facing === 'LEFT') ctx.scale(-1, 1);
-                        if (p.filter) ctx.filter = p.filter;
+                        if (p.filter && p.xpFlashTimer === 0) ctx.filter = p.filter; 
                         drawEmoji(p.emoji || '🐿️', 2.2, 0, bounce);
+                        ctx.restore();
+                    }
+                    break;
+                }
+                case 'COMPANION': {
+                    const sheet = assets.PLAYER_SKIN;
+                    const def = SPRITE_DEFS.SQUIRREL;
+                    if (sheet) {
+                         const frameIndex = Math.floor(state.time / 5) % 2 + 1; 
+                         const col = frameIndex % def.columns;
+                         const row = Math.floor(frameIndex / def.columns);
+                         const sx = col * def.frameWidth;
+                         const sy = row * def.frameHeight;
+                         const scaleFactor = (e.radius * 2.4) / def.frameWidth;
+                         const drawW = def.frameWidth * scaleFactor;
+                         const drawH = def.frameHeight * scaleFactor;
+                         ctx.save();
+                         if (state.player.x < e.x) ctx.scale(-1, 1);
+                         ctx.drawImage(sheet, sx, sy, def.frameWidth, def.frameHeight, -drawW / 2, -drawH / 2, drawW, drawH);
+                         ctx.restore();
+                    } else {
+                        const bounce = Math.abs(Math.sin(state.time * 0.3 + parseFloat(e.id.split('-')[1]))) * 3;
+                        ctx.save();
+                        if (state.player.x < e.x) ctx.scale(-1, 1);
+                        drawEmoji('🐿️', 2.0, 0, bounce);
                         ctx.restore();
                     }
                     break;
@@ -1245,31 +1388,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 case 'ROBOT':
                 case 'ALIEN': {
                     const enemy = e as Enemy;
-                    const def = SPRITE_DEFS[enemy.type] || SPRITE_DEFS['ZOMBIE']; // Fallback logic
+                    const def = SPRITE_DEFS[enemy.type] || SPRITE_DEFS['ZOMBIE'];
                     const sheet = assets[enemy.type];
-
                     if (sheet && SPRITE_DEFS[enemy.type]) {
                         const anim = def.animations[enemy.animationState] || def.animations['WALKING'];
                         const safeFrameIndex = enemy.animationFrame % anim.frames.length;
                         const actualFrameIndex = anim.frames[safeFrameIndex];
-                        
                         const col = actualFrameIndex % def.columns;
                         const row = Math.floor(actualFrameIndex / def.columns);
-                        
                         ctx.save();
                         if (enemy.x < state.player.x) ctx.scale(-1, 1);
-                        // Scale up the sprite slightly to match hit circle
-                        ctx.drawImage(sheet, col * 32, row * 32, 32, 32, -enemy.radius * 1.8, -enemy.radius * 1.8, enemy.radius * 3.6, enemy.radius * 3.6);
+                        const drawSize = enemy.radius * 2.4; 
+                        const offset = drawSize / 2;
+                        ctx.drawImage(sheet, col * 32, row * 32, 32, 32, -offset, -offset, drawSize, drawSize);
                         ctx.restore();
                     } else {
                         const bounce = enemy.animationState === 'WALKING' ? Math.abs(Math.sin(state.time * 0.2 + parseFloat(enemy.id.split('-')[2] || '0'))) * 3 : 0;
                         const wiggle = Math.sin(state.time * 0.1 + parseFloat(enemy.id.split('-')[2] || '0')) * 0.1;
-
                         let emoji = '🧟';
                         if (enemy.type === 'SWARM_ZOMBIE') emoji = '🐀';
                         if (enemy.type === 'ROBOT') emoji = '🤖';
                         if (enemy.type === 'ALIEN') emoji = '👽';
-                        
                         ctx.save();
                         if (enemy.x < state.player.x) ctx.scale(-1, 1); 
                         drawEmoji(emoji, 2.2, wiggle, bounce);
@@ -1277,240 +1416,193 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     }
                     break;
                 }
-
-                case 'NUT_SHELL':
-                    drawEmoji('🌰', 2, (e as Projectile).rotation);
-                    break; 
-                
-                case 'EXPLODING_ACORN':
-                    drawEmoji('🥥', 2, (e as Projectile).rotation);
-                    break;
-
+                case 'NUT_SHELL': drawEmoji('🌰', 2, (e as Projectile).rotation); break; 
+                case 'EXPLODING_ACORN': drawEmoji('🥥', 2, (e as Projectile).rotation); break;
                 case 'OBSTACLE':
                     const obs = e as Obstacle;
-                    if (obs.subtype === 'BENCH') {
-                        drawEmoji('🪑', 1.5);
-                    } else if (obs.subtype === 'CAR') {
-                        drawEmoji('🚗', 2.5);
-                    } else if (obs.subtype === 'CRYSTAL') {
-                        drawEmoji('💎', 1.8);
-                    } else if (obs.subtype === 'TREE') {
-                        drawEmoji('🌲', 3);
-                    } else if (obs.subtype === 'PUDDLE') {
-                        drawEmoji('💧', 2);
-                    } else if (obs.subtype === 'GEYSER') {
-                        drawEmoji('🌋', 2);
-                    } else if (obs.subtype === 'WALL') {
-                        drawEmoji('🧱', 1.5);
-                    } else {
-                        drawEmoji('🪨', 2);
-                    }
+                    if (obs.subtype === 'BENCH') drawEmoji('🪑', 1.5);
+                    else if (obs.subtype === 'CAR') drawEmoji('🚗', 2.5);
+                    else if (obs.subtype === 'CRYSTAL') drawEmoji('💎', 1.8);
+                    else if (obs.subtype === 'TREE') drawEmoji('🌲', 3);
+                    else if (obs.subtype === 'PUDDLE') drawEmoji('💧', 2);
+                    else if (obs.subtype === 'GEYSER') drawEmoji('🌋', 2);
+                    else if (obs.subtype === 'WALL') drawEmoji('🧱', 1.5);
+                    else drawEmoji('🪨', 2);
                     
                     if (obs.destructible && obs.hp < obs.maxHp) {
-                        const w = 40;
-                        const h = 4;
-                        const hpPct = obs.hp / obs.maxHp;
-                        ctx.fillStyle = '#333';
-                        ctx.fillRect(-w/2, -obs.radius - 10, w, h);
-                        ctx.fillStyle = hpPct > 0.5 ? '#48BB78' : '#F56565';
-                        ctx.fillRect(-w/2, -obs.radius - 10, w * hpPct, h);
+                        const w = 40; const h = 4; const hpPct = obs.hp / obs.maxHp;
+                        ctx.fillStyle = '#333'; ctx.fillRect(-w/2, -obs.radius - 10, w, h);
+                        ctx.fillStyle = hpPct > 0.5 ? '#48BB78' : '#F56565'; ctx.fillRect(-w/2, -obs.radius - 10, w * hpPct, h);
                     }
                     break;
-                
-                case 'DROP':
-                    drawEmoji('💎', 1.5, Math.sin(state.time * 0.1) * 0.2);
-                    break;
-                
-                default:
-                    ctx.beginPath();
-                    ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
-                    ctx.fill();
-                    break;
+                case 'DROP': drawEmoji('💎', 1.5, Math.sin(state.time * 0.1) * 0.2); break;
+                default: ctx.beginPath(); ctx.arc(0, 0, e.radius, 0, Math.PI * 2); ctx.fill(); break;
              }
-
              ctx.restore();
           };
           
-          const entities = [...state.obstacles, ...state.drops, ...state.enemies, state.player, ...state.projectiles, ...state.particles].sort((a,b) => a.y - b.y);
+          const entities = [...state.obstacles, ...state.drops, ...state.enemies, state.player, ...state.companions, ...state.projectiles, ...state.particles].sort((a,b) => a.y - b.y);
           entities.forEach(e => drawEntity(e));
 
-          // DRAW CROW AURA (On top of entities but below UI)
           state.player.weapons.forEach(w => {
             if (w.type === 'CROW_AURA') {
                 for (let i = 0; i < w.amount; i++) {
                     const angle = (state.time * w.speed) + (i * (Math.PI * 2 / w.amount));
                     const cx = state.player.x + Math.cos(angle) * w.area;
                     const cy = state.player.y + Math.sin(angle) * w.area;
-                    
-                    const drawX = cx - camX;
-                    const drawY = cy - camY;
-                    
+                    const drawX = cx - camX; const drawY = cy - camY;
                     if (drawX < -50 || drawX > width + 50 || drawY < -50 || drawY > height + 50) continue;
-
                     ctx.save();
                     ctx.translate(drawX, drawY);
-                    
-                    // Simple shadow
-                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-                    ctx.beginPath(); ctx.ellipse(0, 10, 10, 5, 0, 0, Math.PI*2); ctx.fill();
-
-                    // Crow Emoji
-                    ctx.font = '28px sans-serif'; // Bigger
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    if (cx < state.player.x) ctx.scale(-1, 1); // Face inward/outward depending on side
-                    
-                    // Wiggle
+                    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(0, 10, 10, 5, 0, 0, Math.PI*2); ctx.fill();
+                    ctx.font = '28px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    if (cx < state.player.x) ctx.scale(-1, 1); 
                     const wiggle = Math.sin(state.time * 0.3 + i) * 0.2;
                     ctx.rotate(wiggle);
-                    
+                    if (w.damage > 15) {
+                        ctx.filter = 'hue-rotate(260deg) saturate(200%) brightness(0.7)';
+                        ctx.shadowColor = '#6B46C1'; ctx.shadowBlur = 10;
+                    }
                     ctx.fillText('🐦‍⬛', 0, 0);
-
-                    // Visual trail
                     if (!paused && state.time % 4 === 0) {
                         state.particles.push({
-                            id: `crow-trail-${i}-${state.time}`,
-                            x: cx, y: cy, radius: 2, velocity: {x:0, y:0},
-                            life: 10, maxLife: 10, scale: 0.8, type: 'SMOKE', color: 'rgba(0,0,0,0.2)'
+                            id: `crow-trail-${i}-${state.time}`, x: cx, y: cy, radius: 2, velocity: {x:0, y:0},
+                            life: 10, maxLife: 10, scale: 0.8, type: 'SMOKE', 
+                            color: w.damage > 15 ? 'rgba(107, 70, 193, 0.4)' : 'rgba(0,0,0,0.2)'
                         });
                     }
-                    
                     ctx.restore();
                 }
             }
           });
 
           state.texts.forEach(t => {
-              ctx.font = 'bold 14px monospace';
-              ctx.fillStyle = t.color;
-              ctx.strokeStyle = 'black';
-              ctx.lineWidth = 2;
-              ctx.strokeText(t.text, t.x - camX, t.y - camY);
-              ctx.fillText(t.text, t.x - camX, t.y - camY);
+              ctx.font = 'bold 14px monospace'; ctx.fillStyle = t.color; ctx.strokeStyle = 'black'; ctx.lineWidth = 2;
+              ctx.strokeText(t.text, t.x - camX, t.y - camY); ctx.fillText(t.text, t.x - camX, t.y - camY);
           });
 
 
-          // UI LAYER
-          // Responsive UI Scaling
-          const isMobile = width < 768;
-          const uiScale = isMobile ? 0.8 : 1.0;
-
+          // --- UI LAYER ---
+          // Use centralized layout for rendering
+          
+          // Draw Joystick
           if (touchRef.current.joyId !== null) {
               const { joyStartX, joyStartY, joyCurX, joyCurY } = touchRef.current;
               ctx.save();
-              ctx.globalAlpha = 0.5; // Transparent Joystick
-              ctx.beginPath(); ctx.arc(joyStartX, joyStartY, 50, 0, Math.PI * 2);
+              ctx.globalAlpha = 0.5;
+              ctx.beginPath(); ctx.arc(joyStartX, joyStartY, 60 * layout.uiScale, 0, Math.PI * 2);
               ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 4; ctx.stroke();
-              ctx.beginPath(); ctx.arc(joyCurX, joyCurY, 20, 0, Math.PI * 2);
+              
+              ctx.beginPath(); ctx.arc(joyCurX, joyCurY, 25 * layout.uiScale, 0, Math.PI * 2);
               ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fill();
               ctx.restore();
           }
 
-          const bottomOffset = 40;
-          const sprintBtnRadius = 35 * uiScale;
-          const sprintBtnX = width - padding - sprintBtnRadius;
-          const sprintBtnY = height - padding - sprintBtnRadius - bottomOffset;
-          
-          // Sprint Button
-          ctx.beginPath(); ctx.arc(sprintBtnX, sprintBtnY, sprintBtnRadius, 0, Math.PI * 2);
-          ctx.fillStyle = touchRef.current.sprintId !== null ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)'; ctx.fill();
+          // Draw Sprint Button
+          const sprintBtn = layout.sprint;
+          const isSprinting = touchRef.current.sprintId !== null;
+          ctx.beginPath(); ctx.arc(sprintBtn.x, sprintBtn.y, sprintBtn.r * (isSprinting ? 0.9 : 1.0), 0, Math.PI * 2);
+          ctx.fillStyle = isSprinting ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)'; ctx.fill();
           ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
-          ctx.fillStyle = 'white'; ctx.font = `bold ${14 * uiScale}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText('RUN', sprintBtnX, sprintBtnY);
+          ctx.fillStyle = 'white'; ctx.font = `bold ${14 * layout.uiScale}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('RUN', sprintBtn.x, sprintBtn.y);
 
-          // Ability Button
-          const abilityBtnRadius = 30 * uiScale;
-          const abilityBtnX = sprintBtnX - (90 * uiScale);
-          const abilityBtnY = sprintBtnY + (10 * uiScale);
+          // Draw Ability Button
+          const abilityBtn = layout.ability;
           const ability = state.player.activeAbility;
-          
           if (ability) {
               const cooldownPct = ability.cooldownTimer / ability.cooldown;
+              const isPressed = touchRef.current.abilityId !== null;
               
               ctx.save();
-              ctx.translate(abilityBtnX, abilityBtnY);
+              ctx.translate(abilityBtn.x, abilityBtn.y);
+              // Press effect: Shrink slightly
+              if (isPressed) ctx.scale(0.9, 0.9);
               
-              ctx.beginPath(); ctx.arc(0, 0, abilityBtnRadius, 0, Math.PI * 2);
+              ctx.beginPath(); ctx.arc(0, 0, abilityBtn.r, 0, Math.PI * 2);
               ctx.fillStyle = cooldownPct > 0 ? 'rgba(0,0,0,0.5)' : 'rgba(246, 224, 94, 0.4)'; 
-              if (inputRef.current.ability) ctx.fillStyle = 'rgba(255,255,255,0.6)'; 
+              if (isPressed) ctx.fillStyle = 'rgba(255,255,255,0.6)'; 
               ctx.fill();
               ctx.strokeStyle = cooldownPct > 0 ? '#555' : '#F6E05E'; ctx.lineWidth = 3; ctx.stroke();
 
-              ctx.fillStyle = 'white'; ctx.font = `${20 * uiScale}px sans-serif`;
+              ctx.fillStyle = 'white'; ctx.font = `${20 * layout.uiScale}px sans-serif`;
               ctx.fillText('🌰', 0, 0);
 
               if (cooldownPct > 0) {
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-                ctx.beginPath();
-                ctx.moveTo(0, 0);
-                ctx.arc(0, 0, abilityBtnRadius, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * cooldownPct));
-                ctx.lineTo(0, 0);
-                ctx.fill();
+                ctx.beginPath(); ctx.moveTo(0, 0);
+                ctx.arc(0, 0, abilityBtn.r, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * cooldownPct));
+                ctx.lineTo(0, 0); ctx.fill();
               } else if (ability.activeTimer > 0) {
                 const activePct = ability.activeTimer / ability.duration;
                 ctx.beginPath();
-                ctx.arc(0, 0, abilityBtnRadius + 4, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * activePct));
-                ctx.strokeStyle = '#FFFFFF'; 
-                ctx.lineWidth = 3; 
-                ctx.stroke();
+                ctx.arc(0, 0, abilityBtn.r + 4, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * activePct));
+                ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 3; ctx.stroke();
                 
                 if (state.time % 10 < 5) {
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-                    ctx.fill();
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'; ctx.fill();
                 }
               }
               
-              if (!isMobile) {
+              if (!layout.isMobile) {
                   ctx.font = 'bold 10px sans-serif';
                   ctx.fillStyle = '#ccc';
-                  ctx.fillText('SPACE', 0, abilityBtnRadius + 15);
+                  ctx.fillText('SPACE', 0, abilityBtn.r + 15);
               }
-
               ctx.restore();
           }
 
-          // HUD
-          const barWidth = isMobile ? 140 : 200;
-          const barHeight = isMobile ? 12 : 16;
+          // Draw Pause Button
+          const pauseBtn = layout.pause;
+          ctx.fillStyle = 'rgba(255,255,255,0.2)';
+          ctx.beginPath();
+          ctx.roundRect(pauseBtn.x, pauseBtn.y, pauseBtn.w, pauseBtn.h, 8);
+          ctx.fill();
+          ctx.fillStyle = 'white';
+          const barW = 5 * layout.uiScale;
+          const barH = 18 * layout.uiScale;
+          // Center bars in button
+          const barOffsetX = (pauseBtn.w - (barW * 2 + 6)) / 2;
+          const barOffsetY = (pauseBtn.h - barH) / 2;
           
-          ctx.fillStyle = 'white'; ctx.font = `bold ${20 * uiScale}px monospace`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+          ctx.fillRect(pauseBtn.x + barOffsetX, pauseBtn.y + barOffsetY, barW, barH);
+          ctx.fillRect(pauseBtn.x + barOffsetX + barW + 6, pauseBtn.y + barOffsetY, barW, barH);
+
+
+          // HUD
+          const padding = 20;
+          const barWidth = layout.isMobile ? 140 : 200;
+          const barHeight = layout.isMobile ? 12 : 16;
+          
+          ctx.fillStyle = 'white'; ctx.font = `bold ${20 * layout.uiScale}px monospace`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
           ctx.fillText(`SCORE: ${state.score}`, padding, padding);
           
-          const hpY = padding + (30 * uiScale);
+          const hpY = padding + (30 * layout.uiScale);
           ctx.fillStyle = '#333'; ctx.fillRect(padding, hpY, barWidth, barHeight); ctx.fillStyle = '#E53E3E';
           const hpRatio = Math.max(0, state.player.hp) / state.player.maxHp; ctx.fillRect(padding, hpY, barWidth * hpRatio, barHeight);
-          ctx.fillStyle = 'white'; ctx.font = `bold ${10 * uiScale}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillStyle = 'white'; ctx.font = `bold ${10 * layout.uiScale}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
           ctx.fillText(`${Math.ceil(state.player.hp)}/${state.player.maxHp}`, padding + barWidth/2, hpY + barHeight/2);
           
           const xpY = hpY + barHeight + 8;
-          ctx.fillStyle = '#333'; ctx.fillRect(padding, xpY, barWidth, 8 * uiScale); ctx.fillStyle = '#38B2AC';
-          const xpRatio = state.player.xp / state.player.nextLevelXp; ctx.fillRect(padding, xpY, barWidth * xpRatio, 8 * uiScale);
-          ctx.textAlign = 'left'; ctx.font = `bold ${12 * uiScale}px monospace`; ctx.fillStyle = '#38B2AC';
-          ctx.fillText(`LVL ${state.player.level}`, padding, xpY + (14 * uiScale));
+          ctx.fillStyle = '#333'; ctx.fillRect(padding, xpY, barWidth, 8 * layout.uiScale); ctx.fillStyle = '#38B2AC';
+          const xpRatio = state.player.xp / state.player.nextLevelXp; ctx.fillRect(padding, xpY, barWidth * xpRatio, 8 * layout.uiScale);
+          ctx.textAlign = 'left'; ctx.font = `bold ${12 * layout.uiScale}px monospace`; ctx.fillStyle = '#38B2AC';
+          ctx.fillText(`LVL ${state.player.level}`, padding, xpY + (14 * layout.uiScale));
           
-          const stY = xpY + (20 * uiScale);
-          ctx.fillStyle = '#333'; ctx.fillRect(padding, stY, barWidth * 0.7, 6 * uiScale); ctx.fillStyle = '#F6E05E';
-          const stRatio = Math.max(0, state.player.stamina) / state.player.maxStamina; ctx.fillRect(padding, stY, (barWidth * 0.7) * stRatio, 6 * uiScale);
-          ctx.fillStyle = '#F6E05E'; ctx.font = `bold ${10 * uiScale}px monospace`;
-          ctx.fillText(`STM`, padding + (barWidth * 0.7) + 5, stY + (6 * uiScale));
+          const stY = xpY + (20 * layout.uiScale);
+          ctx.fillStyle = '#333'; ctx.fillRect(padding, stY, barWidth * 0.7, 6 * layout.uiScale); ctx.fillStyle = '#F6E05E';
+          const stRatio = Math.max(0, state.player.stamina) / state.player.maxStamina; ctx.fillRect(padding, stY, (barWidth * 0.7) * stRatio, 6 * layout.uiScale);
+          ctx.fillStyle = '#F6E05E'; ctx.font = `bold ${10 * layout.uiScale}px monospace`;
+          ctx.fillText(`STM`, padding + (barWidth * 0.7) + 5, stY + (6 * layout.uiScale));
           
           // Time & Nuts
-          ctx.textAlign = 'center'; ctx.fillStyle = 'white'; ctx.font = `bold ${24 * uiScale}px monospace`;
+          ctx.textAlign = 'center'; ctx.fillStyle = 'white'; ctx.font = `bold ${24 * layout.uiScale}px monospace`;
           const remainingFrames = Math.max(0, GAME_WIN_TIME - state.time);
           const mins = Math.floor(remainingFrames / 3600); const secs = Math.floor((remainingFrames % 3600) / 60);
           ctx.fillText(`${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`, width / 2, padding);
 
-          ctx.font = `bold ${16 * uiScale}px monospace`; ctx.fillStyle = '#F6E05E';
-          ctx.fillText(`🥜 ${state.collectedNuts}`, width / 2, padding + (30 * uiScale));
-
-          const pauseBtnSize = 40 * uiScale;
-          ctx.fillStyle = 'rgba(255,255,255,0.2)';
-          ctx.beginPath();
-          ctx.roundRect(width - padding - pauseBtnSize, padding, pauseBtnSize, pauseBtnSize, 8);
-          ctx.fill();
-          ctx.fillStyle = 'white';
-          ctx.fillRect(width - padding - pauseBtnSize + (12 * uiScale), padding + (10 * uiScale), 5 * uiScale, 20 * uiScale);
-          ctx.fillRect(width - padding - pauseBtnSize + (23 * uiScale), padding + (10 * uiScale), 5 * uiScale, 20 * uiScale);
+          ctx.font = `bold ${16 * layout.uiScale}px monospace`; ctx.fillStyle = '#F6E05E';
+          ctx.fillText(`🥜 ${state.collectedNuts}`, width / 2, padding + (30 * layout.uiScale));
 
           requestRef.current = requestAnimationFrame(render);
       };

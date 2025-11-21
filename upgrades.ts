@@ -121,6 +121,21 @@ export const ALL_UPGRADES: Upgrade[] = [
             }
         },
     },
+    {
+        id: 'MIDNIGHT_FEATHERS',
+        name: 'Midnight Feathers',
+        description: 'Empowers crows with dark energy. Increases Damage, Radius, and count (+1 Crow).',
+        rarity: 'LEGENDARY',
+        icon: '🌑',
+        apply: (player: Player) => {
+            const crowAura = findWeapon(player, 'CROW_AURA');
+            if (crowAura) {
+                crowAura.damage += 10;
+                crowAura.area += 40;
+                crowAura.amount += 1;
+            }
+        },
+    },
     // --- ACORN CANNON ---
     {
         id: 'ACORN_CANNON',

@@ -145,11 +145,13 @@ export const INITIAL_PLAYER: Player = {
   animationState: 'IDLE',
   animationFrame: 0,
   frameTimer: 0,
+  maxCompanions: 0,
 };
 
 export const INITIAL_GAME_STATE: GameState = {
   player: INITIAL_PLAYER,
   enemies: [],
+  companions: [],
   projectiles: [],
   drops: [],
   particles: [],
@@ -222,6 +224,17 @@ export const BASE_UPGRADES_LIST: BaseUpgradeDef[] = [
         maxLevel: 5,
         statKey: 'damage', // Placeholder, damage logic is in weapons usually
         increment: 1 
+    },
+    {
+        id: 'BASE_SCURRY',
+        name: 'Scurry',
+        description: 'Calls a loyal squirrel companion to fight by your side.',
+        icon: '🐿️',
+        baseCost: 500,
+        costMultiplier: 2.0,
+        maxLevel: 4,
+        statKey: 'maxCompanions',
+        increment: 1
     }
 ];
 

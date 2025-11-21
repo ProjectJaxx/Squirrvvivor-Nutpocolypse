@@ -14,7 +14,7 @@ export type EntityType =
   'EXPLOSION' | 'SMOKE' | 'TRAIL' | 'OBSTACLE' | 'FRAGMENT' | 'SPARK' | 'FLASH' |
   'BRUTE_ZOMBIE' | 'RUNNER_ZOMBIE' | 'SPITTER_ZOMBIE' | 'VENOM_SPIT' |
   'SWARM_ZOMBIE' | 'SHIELD_ZOMBIE' |
-  'BOSS_ZOMBIE' | 'BOSS_ROBOT' | 'BOSS_ALIEN' | 'BOSS_MISSILE' | 'LASER';
+  'BOSS_ZOMBIE' | 'BOSS_ROBOT' | 'BOSS_ALIEN' | 'BOSS_MISSILE' | 'LASER' | 'COMPANION';
 
 export interface Entity {
   id: string;
@@ -48,6 +48,14 @@ export interface SquirrelCharacter {
   activeAbility: ActiveAbility;
   // Base stats that can be modified by permanent upgrades
   magnetRadius?: number;
+  maxCompanions?: number; // New stat for Scurry upgrade
+}
+
+export interface Companion extends Entity {
+  offsetAngle: number;
+  cooldown: number;
+  cooldownTimer: number;
+  targetId?: string;
 }
 
 export interface Player extends Entity {
@@ -74,6 +82,7 @@ export interface Player extends Entity {
   animationState: 'IDLE' | 'WALKING';
   animationFrame: number;
   frameTimer: number;
+  maxCompanions?: number; // How many companions allowed
 }
 
 export interface StatusEffect {
@@ -119,6 +128,7 @@ export interface Particle extends Entity {
   life: number;
   maxLife: number;
   scale: number;
+  attachedTo?: string; // ID of entity to follow
 }
 
 export interface FloatingText {
@@ -181,6 +191,7 @@ export interface ScreenShake {
 export interface GameState {
   player: Player;
   enemies: Enemy[];
+  companions: Companion[]; // New: Scurry squad
   projectiles: Projectile[];
   drops: ItemDrop[];
   particles: Particle[];
@@ -224,7 +235,7 @@ export interface BaseUpgradeDef {
     baseCost: number;
     costMultiplier: number; // How much cost increases per level
     maxLevel: number;
-    statKey: 'hp' | 'speed' | 'magnetRadius' | 'damage'; // Which stat on character/player it affects
+    statKey: 'hp' | 'speed' | 'magnetRadius' | 'damage' | 'maxCompanions'; // Which stat on character/player it affects
     increment: number; // Amount per level
 }
 
