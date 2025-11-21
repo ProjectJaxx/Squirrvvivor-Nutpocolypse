@@ -1,8 +1,11 @@
 
-import { GameState, Player, Weapon, SquirrelCharacter, StageDuration } from './types';
+import { GameState, Player, Weapon, SquirrelCharacter, StageDuration, BaseUpgradeDef } from './types';
 
 export const CANVAS_WIDTH = window.innerWidth;
 export const CANVAS_HEIGHT = window.innerHeight;
+
+// Game Logic Constants
+export const GAME_WIN_TIME = 180 * 60; // 3 minutes in frames (180s * 60fps)
 
 export const COLORS = {
   background: '#2d3748',
@@ -45,7 +48,15 @@ export const SQUIRREL_CHARACTERS: SquirrelCharacter[] = [
     color: '#A0AEC0', // Slate Grey
     emoji: '🐿️',
     radius: 16,
-    filter: 'grayscale(100%) brightness(1.2) drop-shadow(0 0 2px rgba(255,255,255,0.3))'
+    filter: 'grayscale(100%) brightness(1.2) drop-shadow(0 0 2px rgba(255,255,255,0.3))',
+    activeAbility: {
+      type: 'NUT_BARRAGE',
+      name: 'Nut Barrage',
+      cooldown: 900, // 15 seconds
+      cooldownTimer: 0,
+      duration: 180, // 3 seconds
+      activeTimer: 0
+    }
   },
   {
     id: 'RED',
@@ -56,7 +67,15 @@ export const SQUIRREL_CHARACTERS: SquirrelCharacter[] = [
     color: '#E53E3E', // Red-600
     emoji: '🐿️',
     radius: 14,
-    filter: 'sepia(1) saturate(500%) hue-rotate(-40deg) brightness(1.1) contrast(1.1) drop-shadow(0 0 2px rgba(229,62,62,0.5))'
+    filter: 'sepia(1) saturate(500%) hue-rotate(-40deg) brightness(1.1) contrast(1.1) drop-shadow(0 0 2px rgba(229,62,62,0.5))',
+    activeAbility: {
+      type: 'NUT_BARRAGE',
+      name: 'Nut Barrage',
+      cooldown: 800, // Slightly faster cooldown for Red
+      cooldownTimer: 0,
+      duration: 180,
+      activeTimer: 0
+    }
   },
   {
     id: 'GIANT',
@@ -67,7 +86,15 @@ export const SQUIRREL_CHARACTERS: SquirrelCharacter[] = [
     color: '#3E2723', // Dark Brown/Black
     emoji: '🐿️',
     radius: 22,
-    filter: 'grayscale(60%) brightness(0.6) sepia(40%) contrast(1.3) drop-shadow(0 0 3px rgba(0,0,0,0.5))'
+    filter: 'grayscale(60%) brightness(0.6) sepia(40%) contrast(1.3) drop-shadow(0 0 3px rgba(0,0,0,0.5))',
+    activeAbility: {
+      type: 'NUT_BARRAGE',
+      name: 'Nut Barrage',
+      cooldown: 1000, // Slower cooldown
+      cooldownTimer: 0,
+      duration: 240, // Longer duration
+      activeTimer: 0
+    }
   }
 ];
 
@@ -97,7 +124,7 @@ export const INITIAL_PLAYER: Player = {
   level: 1,
   nextLevelXp: 100,
   speed: 4,
-  magnetRadius: 150, // Default magnet range
+  magnetRadius: 150,
   weapons: DEFAULT_WEAPONS,
   activeAbility: {
     type: 'NUT_BARRAGE',
@@ -130,6 +157,7 @@ export const INITIAL_GAME_STATE: GameState = {
   obstacles: [],
   score: 0,
   kills: 0,
+  collectedNuts: 0,
   time: 0,
   wave: 1,
   bossWarningTimer: 0,
@@ -140,15 +168,62 @@ export const INITIAL_GAME_STATE: GameState = {
 
 export const STAGE_CONFIGS: Record<StageDuration, { waveDuration: number }> = {
   STANDARD: {
-    waveDuration: 45 // Seconds per wave
+    waveDuration: 50 // 50 Seconds per wave
   },
   LONG: {
-    waveDuration: 60
+    waveDuration: 65 // Slightly longer if user picks "Long"
   },
   EPIC: {
-    waveDuration: 90
+    waveDuration: 80
   }
 };
+
+export const BASE_UPGRADES_LIST: BaseUpgradeDef[] = [
+    {
+        id: 'BASE_HP',
+        name: 'Thick Fur',
+        description: 'Permanently increases max Health.',
+        icon: '❤️',
+        baseCost: 50,
+        costMultiplier: 1.5,
+        maxLevel: 10,
+        statKey: 'hp',
+        increment: 10
+    },
+    {
+        id: 'BASE_SPEED',
+        name: 'Quick Paws',
+        description: 'Permanently increases Movement Speed.',
+        icon: '👟',
+        baseCost: 80,
+        costMultiplier: 1.6,
+        maxLevel: 5,
+        statKey: 'speed',
+        increment: 0.4
+    },
+    {
+        id: 'BASE_MAGNET',
+        name: 'Nut Magnet',
+        description: 'Permanently increases Loot Pickup Radius.',
+        icon: '🧲',
+        baseCost: 60,
+        costMultiplier: 1.4,
+        maxLevel: 10,
+        statKey: 'magnetRadius',
+        increment: 25
+    },
+    {
+        id: 'BASE_DMG',
+        name: 'Sharp Teeth',
+        description: 'Permanently increases base Damage (not implemented fully in dmg calcs yet but conceptually here).',
+        icon: '🦷',
+        baseCost: 100,
+        costMultiplier: 1.8,
+        maxLevel: 5,
+        statKey: 'damage', // Placeholder, damage logic is in weapons usually
+        increment: 1 
+    }
+];
 
 export interface SpriteSheetDefinition {
     columns: number;

@@ -1,5 +1,5 @@
 
-export type AppState = 'LOADING' | 'MENU' | 'GAME' | 'LEVEL_UP' | 'GAME_OVER' | 'SETTINGS' | 'SAVE_SELECT' | 'PAUSED';
+export type AppState = 'LOADING' | 'MENU' | 'GAME' | 'LEVEL_UP' | 'GAME_OVER' | 'SETTINGS' | 'SAVE_SELECT' | 'PAUSED' | 'BASE_UPGRADES';
 
 export interface Vector {
   x: number;
@@ -26,6 +26,15 @@ export interface Entity {
   emoji?: string;
 }
 
+export interface ActiveAbility {
+  type: 'NUT_BARRAGE';
+  name: string;
+  cooldown: number;      // Total cooldown in frames
+  cooldownTimer: number; // Current cooldown remaining
+  duration: number;      // How long the ability lasts (frames)
+  activeTimer: number;   // Time remaining while active
+}
+
 export interface SquirrelCharacter {
   id:string;
   name: string;
@@ -36,15 +45,9 @@ export interface SquirrelCharacter {
   emoji: string;
   radius: number;
   filter?: string;
-}
-
-export interface ActiveAbility {
-  type: 'NUT_BARRAGE';
-  name: string;
-  cooldown: number;      // Total cooldown in frames
-  cooldownTimer: number; // Current cooldown remaining
-  duration: number;      // How long the ability lasts (frames)
-  activeTimer: number;   // Time remaining while active
+  activeAbility: ActiveAbility;
+  // Base stats that can be modified by permanent upgrades
+  magnetRadius?: number;
 }
 
 export interface Player extends Entity {
@@ -185,6 +188,7 @@ export interface GameState {
   obstacles: Obstacle[];
   score: number;
   kills: number; 
+  collectedNuts: number; // Currency collected in run
   time: number; // frames
   wave: number;
   bossWarningTimer: number;
@@ -200,6 +204,7 @@ export interface PlayerStats {
   maxWaveReached: number;
   highestScore: number;
   totalDeaths: number;
+  totalNuts: number; // Currency
 }
 
 export interface SaveSlot {
@@ -208,6 +213,19 @@ export interface SaveSlot {
   lastPlayed: number;
   created: number;
   stats: PlayerStats;
+  permanentUpgrades: Record<string, number>; // upgradeId -> level
+}
+
+export interface BaseUpgradeDef {
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    baseCost: number;
+    costMultiplier: number; // How much cost increases per level
+    maxLevel: number;
+    statKey: 'hp' | 'speed' | 'magnetRadius' | 'damage'; // Which stat on character/player it affects
+    increment: number; // Amount per level
 }
 
 export interface SettingsMenuProps {
@@ -221,7 +239,7 @@ export interface SettingsMenuProps {
 }
 
 export interface GameCanvasProps {
-  onGameOver: (score: number, time: number, kills: number) => void;
+  onGameOver: (score: number, time: number, kills: number, nuts: number, won: boolean) => void;
   onLevelUp: (upgrades: Upgrade[], onSelect: (u: Upgrade) => void) => void;
   paused: boolean;
   character: SquirrelCharacter;

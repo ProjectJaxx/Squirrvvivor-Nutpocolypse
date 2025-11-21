@@ -7,8 +7,9 @@ import { GameOver } from './components/GameOver';
 import { SettingsMenu } from './components/SettingsMenu';
 import { SaveSlots } from './components/SaveSlots';
 import { PauseMenu } from './components/PauseMenu';
+import { BaseUpgrades } from './components/BaseUpgrades';
 import { AppState, Upgrade, SquirrelCharacter, SaveSlot, StageDuration } from './types';
-import { SQUIRREL_CHARACTERS } from './constants';
+import { SQUIRREL_CHARACTERS, BASE_UPGRADES_LIST } from './constants';
 import { updateSlotStats } from './services/storageService';
 import { loadAssets } from './services/assetService';
 import { LoadingScreen } from './components/LoadingScreen';
@@ -25,6 +26,8 @@ const App: React.FC = () => {
   const [finalScore, setFinalScore] = useState(0);
   const [finalTime, setFinalTime] = useState(0);
   const [finalKills, setFinalKills] = useState(0);
+  const [finalNuts, setFinalNuts] = useState(0);
+  const [gameWon, setGameWon] = useState(false);
   
   const [availableUpgrades, setAvailableUpgrades] = useState<Upgrade[]>([]);
   const [onUpgradeSelect, setOnUpgradeSelect] = useState<(u: Upgrade) => void>(() => {});
@@ -36,15 +39,47 @@ const App: React.FC = () => {
   
   const [selectedCharacter, setSelectedCharacter] = useState<SquirrelCharacter>(SQUIRREL_CHARACTERS[0]);
   const [currentSlot, setCurrentSlot] = useState<SaveSlot | null>(null);
+  const [effectiveCharacter, setEffectiveCharacter] = useState<SquirrelCharacter>(SQUIRREL_CHARACTERS[0]);
 
   useEffect(() => {
     loadAssets().then(() => {
       setAppState('SAVE_SELECT');
     }).catch(err => {
       console.error("Failed to load assets", err);
-      // Handle asset loading error, maybe show an error message
     });
   }, []);
+
+  // Apply permanent upgrades to selected character whenever slot or char changes
+  useEffect(() => {
+    if (!currentSlot) {
+        setEffectiveCharacter(selectedCharacter);
+        return;
+    }
+
+    const upgrades = currentSlot.permanentUpgrades || {};
+    const char = { ...selectedCharacter };
+
+    // Iterate through base upgrades config and apply modifiers
+    BASE_UPGRADES_LIST.forEach(def => {
+        const level = upgrades[def.id] || 0;
+        if (level > 0) {
+            const totalBoost = level * def.increment;
+            
+            if (def.statKey === 'hp') {
+                char.hp += totalBoost;
+            } else if (def.statKey === 'speed') {
+                char.speed += totalBoost;
+            } else if (def.statKey === 'magnetRadius') {
+                // Base magnet radius is defined in constants (150), but stored on player state usually.
+                // We'll pass it via character prop to init.
+                char.magnetRadius = (char.magnetRadius || 150) + totalBoost;
+            }
+        }
+    });
+    
+    setEffectiveCharacter(char);
+
+  }, [selectedCharacter, currentSlot]);
 
   const handleSlotSelect = (slot: SaveSlot) => {
     setCurrentSlot(slot);
@@ -57,6 +92,8 @@ const App: React.FC = () => {
     setFinalScore(0);
     setFinalTime(0);
     setFinalKills(0);
+    setFinalNuts(0);
+    setGameWon(false);
   };
 
   const quitGame = () => {
@@ -64,20 +101,23 @@ const App: React.FC = () => {
     setAppState('MENU');
   };
 
-  const handleGameOver = (score: number, timeSurvived: number, kills: number) => {
+  const handleGameOver = (score: number, timeSurvived: number, kills: number, nuts: number, won: boolean) => {
     setGameActive(false);
     setFinalScore(score);
     setFinalTime(timeSurvived);
     setFinalKills(kills);
+    setFinalNuts(nuts);
+    setGameWon(won);
     setAppState('GAME_OVER');
     
     if (currentSlot) {
-        const estimatedWave = Math.floor(timeSurvived / (45 * 60)) + 1;
+        const estimatedWave = Math.floor(timeSurvived / 60) + 1; // approx
         const updated = updateSlotStats(currentSlot.id, {
             score,
             time: Math.floor(timeSurvived / 60),
             kills,
-            wave: estimatedWave
+            wave: estimatedWave,
+            nuts
         });
         if (updated) setCurrentSlot(updated);
     }
@@ -116,7 +156,7 @@ const App: React.FC = () => {
               onGameOver={handleGameOver} 
               onLevelUp={handleLevelUp}
               paused={appState !== 'GAME'}
-              character={selectedCharacter}
+              character={effectiveCharacter} // Use modified character with perm upgrades
               soundEnabled={soundEnabled}
               musicEnabled={musicEnabled}
               stageDuration={stageDuration}
@@ -137,11 +177,20 @@ const App: React.FC = () => {
         <MainMenu 
           onStart={startGame} 
           onSettings={openSettings} 
+          onBaseUpgrades={() => setAppState('BASE_UPGRADES')}
           selectedCharacter={selectedCharacter}
           onSelectCharacter={setSelectedCharacter}
           currentSlot={currentSlot}
           onSwitchSlot={() => setAppState('SAVE_SELECT')}
         />
+      )}
+
+      {appState === 'BASE_UPGRADES' && currentSlot && (
+          <BaseUpgrades 
+            slot={currentSlot} 
+            onBack={() => setAppState('MENU')}
+            onUpdateSlot={setCurrentSlot}
+          />
       )}
       
       {appState === 'SETTINGS' && (
@@ -176,6 +225,8 @@ const App: React.FC = () => {
           score={finalScore} 
           timeSurvived={finalTime}
           kills={finalKills}
+          nuts={finalNuts}
+          won={gameWon}
           onRestart={startGame}
           onMenu={() => setAppState('MENU')}
         />

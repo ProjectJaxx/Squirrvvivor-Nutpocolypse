@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { Play, Trophy, Settings as SettingsIcon, ChevronLeft, ChevronRight, Save, Palette, Upload, Wand2, Loader } from 'lucide-react';
+import { Play, Trophy, Settings as SettingsIcon, ChevronLeft, ChevronRight, Save, Palette, Upload, Wand2, Loader, Zap, Hammer } from 'lucide-react';
 import { generateLore, generateCharacterSprite } from '../services/geminiService';
 import { SQUIRREL_CHARACTERS } from '../constants';
 import { setPlayerSkin, assets } from '../services/assetService';
@@ -9,13 +9,14 @@ import { SquirrelCharacter, SaveSlot } from '../types';
 interface MainMenuProps {
   onStart: () => void;
   onSettings: () => void;
+  onBaseUpgrades: () => void;
   selectedCharacter: SquirrelCharacter;
   onSelectCharacter: (char: SquirrelCharacter) => void;
   currentSlot: SaveSlot | null;
   onSwitchSlot: () => void;
 }
 
-export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, selectedCharacter, onSelectCharacter, currentSlot, onSwitchSlot }) => {
+export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseUpgrades, selectedCharacter, onSelectCharacter, currentSlot, onSwitchSlot }) => {
   const [lore, setLore] = useState<string>("Loading arcane squirrel wisdom...");
   const [showWorkshop, setShowWorkshop] = useState(false);
   const [genPrompt, setGenPrompt] = useState("");
@@ -77,10 +78,17 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, selecte
       </div>
       
       {currentSlot && (
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-gray-800/80 p-2 px-4 rounded-full border border-gray-600 cursor-pointer hover:bg-gray-700 transition" onClick={onSwitchSlot}>
-            <Save size={16} className="text-amber-400" />
-            <span className="text-sm font-bold text-gray-200">{currentSlot.name}</span>
-            <span className="text-xs text-gray-500 ml-2">Switch</span>
+        <div className="absolute top-4 left-4 z-20 flex items-center gap-4">
+            <div className="flex items-center gap-2 bg-gray-800/80 p-2 px-4 rounded-full border border-gray-600 cursor-pointer hover:bg-gray-700 transition" onClick={onSwitchSlot}>
+                <Save size={16} className="text-amber-400" />
+                <span className="text-sm font-bold text-gray-200">{currentSlot.name}</span>
+                <span className="text-xs text-gray-500 ml-2">Switch</span>
+            </div>
+            
+            <div className="flex items-center gap-2 bg-gray-800/80 p-2 px-4 rounded-full border border-yellow-600/50">
+                <span className="text-lg">🥜</span>
+                <span className="text-sm font-bold text-yellow-400">{currentSlot.stats.totalNuts || 0}</span>
+            </div>
         </div>
       )}
 
@@ -110,23 +118,27 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, selecte
                 "{lore}"
             </div>
 
-            <div className="flex flex-col gap-3 w-full max-w-xs mx-auto md:mx-0 mt-auto">
+            <div className="grid grid-cols-2 gap-3 w-full max-w-sm mx-auto md:mx-0 mt-auto">
                 <button 
                     onClick={onStart}
-                    className="flex items-center justify-center gap-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-bold py-3 md:py-4 px-8 rounded-lg transform transition hover:scale-105 shadow-lg text-lg md:text-xl"
+                    className="col-span-2 flex items-center justify-center gap-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-bold py-3 md:py-4 px-8 rounded-lg transform transition hover:scale-105 shadow-lg text-lg md:text-xl"
                 >
                     <Play fill="currentColor" /> START GAME
                 </button>
                 
                 <button 
-                    onClick={onSettings}
-                    className="flex items-center justify-center gap-3 bg-gray-700 hover:bg-gray-600 text-gray-200 font-bold py-3 px-6 rounded-lg transition text-base md:text-lg"
+                    onClick={onBaseUpgrades}
+                    className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-yellow-400 font-bold py-3 px-6 rounded-lg transition text-sm md:text-base border border-yellow-600/30"
                 >
-                    <SettingsIcon /> SETTINGS
+                    <Hammer size={18} /> UPGRADES
                 </button>
-            </div>
-            <div className="mt-4 text-gray-500 text-xs hidden md:block">
-                WASD / Arrows to move.
+
+                <button 
+                    onClick={onSettings}
+                    className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-gray-200 font-bold py-3 px-6 rounded-lg transition text-sm md:text-base"
+                >
+                    <SettingsIcon size={18} /> SETTINGS
+                </button>
             </div>
         </div>
 
@@ -258,6 +270,19 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, selecte
                                     />
                                 </div>
                             </div>
+                            
+                            {/* Active Ability Display */}
+                            {selectedCharacter.activeAbility && (
+                                <div className="mt-4 pt-2 border-t border-gray-700">
+                                    <div className="flex items-center gap-2 text-xs text-yellow-400 mb-1">
+                                        <Zap size={12} />
+                                        <span className="font-bold uppercase">{selectedCharacter.activeAbility.name}</span>
+                                    </div>
+                                    <div className="text-[10px] text-gray-400">
+                                        Cooldown: {Math.round(selectedCharacter.activeAbility.cooldown / 60)}s | Duration: {Math.round(selectedCharacter.activeAbility.duration / 60)}s
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </>

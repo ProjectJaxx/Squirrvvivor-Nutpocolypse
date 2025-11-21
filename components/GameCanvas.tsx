@@ -6,7 +6,7 @@ import {
 } from '../types';
 import { 
     COLORS, BIOME_CONFIG, 
-    INITIAL_GAME_STATE, STAGE_CONFIGS, SPRITE_DEFS
+    INITIAL_GAME_STATE, STAGE_CONFIGS, SPRITE_DEFS, GAME_WIN_TIME
 } from '../constants';
 import { ALL_UPGRADES } from '../upgrades';
 import { playSound, playMusic, stopMusic } from '../services/soundService';
@@ -160,8 +160,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     state.player.emoji = character.emoji;
     state.player.radius = character.radius;
     state.player.filter = character.filter;
+    // Initialize upgraded stats if provided by character prop (from App.tsx calculation)
+    if (character.magnetRadius) state.player.magnetRadius = character.magnetRadius;
+    
     state.player.airborneTimer = 0;
-    state.player.activeAbility = { ...INITIAL_GAME_STATE.player.activeAbility }; 
+    
+    // Load Active Ability from Character definition
+    state.player.activeAbility = character.activeAbility 
+      ? JSON.parse(JSON.stringify(character.activeAbility)) 
+      : { ...INITIAL_GAME_STATE.player.activeAbility };
     
     state.biome = 'PARK'; 
     const biomeData = BIOME_CONFIG[state.biome];
@@ -382,6 +389,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               const state = stateRef.current;
               state.time++;
 
+              // Check Win Condition
+              if (state.time >= GAME_WIN_TIME) {
+                  onGameOver(state.score, state.time, state.kills, state.collectedNuts, true);
+                  return; // Stop frame
+              }
+
               const p = state.player;
               if (p.invincibleTimer && p.invincibleTimer > 0) p.invincibleTimer--;
               if (p.xpFlashTimer && p.xpFlashTimer > 0) p.xpFlashTimer--;
@@ -518,7 +531,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       if (soundEnabled) playSound('LEVELUP'); 
                       state.texts.push({
                           id: `txt-${Math.random()}`, x: p.x, y: p.y - 40, 
-                          text: "NUT BARRAGE!", life: 40, color: '#F6E05E', velocity: {x:0, y:-1}
+                          text: ability.name.toUpperCase() + "!", life: 40, color: '#F6E05E', velocity: {x:0, y:-1}
                       });
                   }
               }
@@ -984,7 +997,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
                   if (dist < p.radius + d.radius + (p.airborneTimer ? 20 : 0)) {
                       if (d.kind === 'XP') {
-                          p.xp += d.value; p.xpFlashTimer = 20;
+                          // XP also counts as Nuts
+                          state.collectedNuts += Math.ceil(d.value / 10); // 1 Nut per ~10 XP value
+
+                          p.xp += d.value; 
+                          p.xpFlashTimer = 15; 
+
+                          // Visual Stat-Up Particles
+                          for(let k=0; k<4; k++) {
+                              state.particles.push({
+                                  id: `xp-up-${Math.random()}`, 
+                                  x: p.x + (Math.random() - 0.5) * 15, 
+                                  y: p.y + (Math.random() - 0.5) * 15, 
+                                  radius: Math.random() * 2 + 1, 
+                                  velocity: {x: (Math.random()-0.5), y: -2 - Math.random()}, // Upward float
+                                  life: 25, 
+                                  maxLife: 25, 
+                                  scale: 1, 
+                                  type: 'SPARK', 
+                                  color: Math.random() > 0.5 ? '#4FD1C5' : '#63B3ED'
+                              });
+                          }
+
                           if (p.xp >= p.nextLevelXp) {
                               p.level++; p.xp -= p.nextLevelXp; p.nextLevelXp = Math.floor(p.nextLevelXp * 1.5);
                               if (soundEnabled) playSound('LEVELUP');
@@ -1009,7 +1043,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   if (state.texts[i].life <= 0) state.texts.splice(i, 1);
               }
 
-              if (p.hp <= 0) onGameOver(state.score, state.time, state.kills);
+              if (p.hp <= 0) onGameOver(state.score, state.time, state.kills, state.collectedNuts, false);
           }
 
           const state = stateRef.current;
@@ -1121,7 +1155,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              if (e.type === 'PLAYER') {
                  const p = e as Player;
                  if (p.invincibleTimer && p.invincibleTimer > 0 && state.time % 8 < 4) ctx.globalAlpha = 0.5;
-                 if (p.xpFlashTimer && p.xpFlashTimer > 0) { ctx.shadowColor = '#4FD1C5'; ctx.shadowBlur = 25 * (p.xpFlashTimer / 20); }
+                 
+                 // XP Stat-Up Visuals
+                 if (p.xpFlashTimer && p.xpFlashTimer > 0) { 
+                    ctx.shadowColor = '#4FD1C5'; 
+                    ctx.shadowBlur = 20 * (p.xpFlashTimer / 15); 
+                    
+                    // Scale Pulse
+                    const pulse = 1 + (p.xpFlashTimer / 15) * 0.15;
+                    ctx.scale(pulse, pulse);
+                 }
                  
                  if (p.activeAbility && p.activeAbility.activeTimer > 0) {
                     ctx.beginPath();
@@ -1381,48 +1424,50 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           const abilityBtnY = sprintBtnY + (10 * uiScale);
           const ability = state.player.activeAbility;
           
-          const cooldownPct = ability.cooldownTimer / ability.cooldown;
-          
-          ctx.save();
-          ctx.translate(abilityBtnX, abilityBtnY);
-          
-          ctx.beginPath(); ctx.arc(0, 0, abilityBtnRadius, 0, Math.PI * 2);
-          ctx.fillStyle = cooldownPct > 0 ? 'rgba(0,0,0,0.5)' : 'rgba(246, 224, 94, 0.4)'; 
-          if (inputRef.current.ability) ctx.fillStyle = 'rgba(255,255,255,0.6)'; 
-          ctx.fill();
-          ctx.strokeStyle = cooldownPct > 0 ? '#555' : '#F6E05E'; ctx.lineWidth = 3; ctx.stroke();
+          if (ability) {
+              const cooldownPct = ability.cooldownTimer / ability.cooldown;
+              
+              ctx.save();
+              ctx.translate(abilityBtnX, abilityBtnY);
+              
+              ctx.beginPath(); ctx.arc(0, 0, abilityBtnRadius, 0, Math.PI * 2);
+              ctx.fillStyle = cooldownPct > 0 ? 'rgba(0,0,0,0.5)' : 'rgba(246, 224, 94, 0.4)'; 
+              if (inputRef.current.ability) ctx.fillStyle = 'rgba(255,255,255,0.6)'; 
+              ctx.fill();
+              ctx.strokeStyle = cooldownPct > 0 ? '#555' : '#F6E05E'; ctx.lineWidth = 3; ctx.stroke();
 
-          ctx.fillStyle = 'white'; ctx.font = `${20 * uiScale}px sans-serif`;
-          ctx.fillText('🌰', 0, 0);
+              ctx.fillStyle = 'white'; ctx.font = `${20 * uiScale}px sans-serif`;
+              ctx.fillText('🌰', 0, 0);
 
-          if (cooldownPct > 0) {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.arc(0, 0, abilityBtnRadius, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * cooldownPct));
-            ctx.lineTo(0, 0);
-            ctx.fill();
-          } else if (ability.activeTimer > 0) {
-            const activePct = ability.activeTimer / ability.duration;
-            ctx.beginPath();
-            ctx.arc(0, 0, abilityBtnRadius + 4, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * activePct));
-            ctx.strokeStyle = '#FFFFFF'; 
-            ctx.lineWidth = 3; 
-            ctx.stroke();
-            
-            if (state.time % 10 < 5) {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+              if (cooldownPct > 0) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.arc(0, 0, abilityBtnRadius, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * cooldownPct));
+                ctx.lineTo(0, 0);
                 ctx.fill();
-            }
-          }
-          
-          if (!isMobile) {
-              ctx.font = 'bold 10px sans-serif';
-              ctx.fillStyle = '#ccc';
-              ctx.fillText('SPACE', 0, abilityBtnRadius + 15);
-          }
+              } else if (ability.activeTimer > 0) {
+                const activePct = ability.activeTimer / ability.duration;
+                ctx.beginPath();
+                ctx.arc(0, 0, abilityBtnRadius + 4, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * activePct));
+                ctx.strokeStyle = '#FFFFFF'; 
+                ctx.lineWidth = 3; 
+                ctx.stroke();
+                
+                if (state.time % 10 < 5) {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                    ctx.fill();
+                }
+              }
+              
+              if (!isMobile) {
+                  ctx.font = 'bold 10px sans-serif';
+                  ctx.fillStyle = '#ccc';
+                  ctx.fillText('SPACE', 0, abilityBtnRadius + 15);
+              }
 
-          ctx.restore();
+              ctx.restore();
+          }
 
           // HUD
           const barWidth = isMobile ? 140 : 200;
@@ -1449,10 +1494,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.fillStyle = '#F6E05E'; ctx.font = `bold ${10 * uiScale}px monospace`;
           ctx.fillText(`STM`, padding + (barWidth * 0.7) + 5, stY + (6 * uiScale));
           
+          // Time & Nuts
           ctx.textAlign = 'center'; ctx.fillStyle = 'white'; ctx.font = `bold ${24 * uiScale}px monospace`;
-          const mins = Math.floor(state.time / 3600); const secs = Math.floor((state.time % 3600) / 60);
+          const remainingFrames = Math.max(0, GAME_WIN_TIME - state.time);
+          const mins = Math.floor(remainingFrames / 3600); const secs = Math.floor((remainingFrames % 3600) / 60);
           ctx.fillText(`${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`, width / 2, padding);
-          
+
+          ctx.font = `bold ${16 * uiScale}px monospace`; ctx.fillStyle = '#F6E05E';
+          ctx.fillText(`🥜 ${state.collectedNuts}`, width / 2, padding + (30 * uiScale));
+
           const pauseBtnSize = 40 * uiScale;
           ctx.fillStyle = 'rgba(255,255,255,0.2)';
           ctx.beginPath();
