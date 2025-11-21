@@ -5,12 +5,22 @@ import {
     ItemDrop, Particle, FloatingText, Obstacle, Upgrade, Vector 
 } from '../types';
 import { 
-    CANVAS_WIDTH, CANVAS_HEIGHT, COLORS, BIOME_CONFIG, 
-    INITIAL_GAME_STATE, STAGE_CONFIGS, UPGRADE_POOL_IDS, SPRITE_DEFS
+    COLORS, BIOME_CONFIG, 
+    INITIAL_GAME_STATE, STAGE_CONFIGS, SPRITE_DEFS
 } from '../constants';
+import { ALL_UPGRADES } from '../upgrades';
 import { playSound, playMusic, stopMusic } from '../services/soundService';
 import { assets } from '../services/assetService';
-import { Zap } from 'lucide-react';
+import { Zap, Shield, Crosshair } from 'lucide-react';
+
+const shuffle = <T,>(array: T[]): T[] => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+};
 
 export const GameCanvas: React.FC<GameCanvasProps> = ({
   onGameOver,
@@ -24,8 +34,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GameState>(JSON.parse(JSON.stringify(INITIAL_GAME_STATE)));
-  const inputRef = useRef({ up: false, down: false, left: false, right: false, sprint: false });
-  
+  const inputRef = useRef({ up: false, down: false, left: false, right: false, sprint: false, ability: false });
+  const bgPatternRef = useRef<CanvasPattern | null>(null);
+
   // Input & Touch State
   const touchRef = useRef<{
     joyId: number | null;
@@ -42,20 +53,105 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   
   const triggerShake = (intensity: number, duration: number) => {
       const state = stateRef.current;
-      // Allow new shake to override if it's stronger or the current one is almost over
       if (state.shake.intensity < intensity || state.shake.duration < 5) {
           state.shake.intensity = intensity;
           state.shake.duration = duration;
       }
   };
 
-  // Initialize Game State
+  const createGroundPattern = (biome: string, ctx: CanvasRenderingContext2D) => {
+      const size = 256;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const tCtx = canvas.getContext('2d');
+      if (!tCtx) return null;
+
+      // Base color
+      const color = BIOME_CONFIG[biome].bgColor;
+      tCtx.fillStyle = color;
+      tCtx.fillRect(0, 0, size, size);
+
+      // Add texture
+      if (biome === 'PARK') {
+          // Grass Blades
+          for (let i = 0; i < 600; i++) {
+              tCtx.fillStyle = Math.random() > 0.5 ? '#276749' : '#38A169'; // Darker/Lighter green
+              const x = Math.random() * size;
+              const y = Math.random() * size;
+              const w = 2 + Math.random() * 3;
+              const h = 3 + Math.random() * 8;
+              tCtx.fillRect(x, y, w, h);
+          }
+          // Flowers
+          for (let i = 0; i < 15; i++) {
+               tCtx.fillStyle = ['#FAF089', '#F687B3', '#63B3ED', '#FFFFFF'][Math.floor(Math.random()*4)];
+               tCtx.beginPath();
+               tCtx.arc(Math.random() * size, Math.random() * size, 2 + Math.random() * 2, 0, Math.PI*2);
+               tCtx.fill();
+          }
+      } else if (biome === 'PARKING_LOT') {
+          // Asphalt Noise
+          for (let i = 0; i < 1000; i++) {
+              tCtx.fillStyle = Math.random() > 0.5 ? '#2D3748' : '#718096';
+              tCtx.fillRect(Math.random() * size, Math.random() * size, 2, 2);
+          }
+          // Parking lines snippet
+          tCtx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+          tCtx.fillRect(0, 100, size, 10);
+      } else if (biome === 'MARS') {
+          // Craters/Rocks
+          for (let i = 0; i < 300; i++) {
+              tCtx.fillStyle = Math.random() > 0.5 ? '#9B2C2C' : '#822727';
+              const r = Math.random() * 4;
+              tCtx.beginPath();
+              tCtx.arc(Math.random() * size, Math.random() * size, r, 0, Math.PI*2);
+              tCtx.fill();
+          }
+      }
+
+      return ctx.createPattern(canvas, 'repeat');
+  };
+
+  const checkObstacleCollision = (entityX: number, entityY: number, entityRadius: number, obs: Obstacle, padding: number = 0): boolean => {
+      if (obs.width && obs.height) {
+          const cos = Math.cos(-obs.rotation);
+          const sin = Math.sin(-obs.rotation);
+          const dx = entityX - obs.x;
+          const dy = entityY - obs.y;
+          const localX = dx * cos - dy * sin;
+          const localY = dx * sin + dy * cos;
+
+          const halfW = (obs.width / 2) + padding;
+          const halfH = (obs.height / 2) + padding;
+
+          const closestX = Math.max(-halfW, Math.min(localX, halfW));
+          const closestY = Math.max(-halfH, Math.min(localY, halfH));
+
+          const distLocalX = localX - closestX;
+          const distLocalY = localY - closestY;
+          
+          return (distLocalX * distLocalX + distLocalY * distLocalY) < ((entityRadius + padding) * (entityRadius + padding));
+      } else {
+          const dist = Math.hypot(entityX - obs.x, entityY - obs.y);
+          return dist < entityRadius + obs.radius + padding;
+      }
+  };
+
+  // Handle Resize and Init
   useEffect(() => {
+    const updateSize = () => {
+        if (canvasRef.current) {
+            canvasRef.current.width = window.innerWidth;
+            canvasRef.current.height = window.innerHeight;
+        }
+    };
+    window.addEventListener('resize', updateSize);
+    updateSize();
+
     const state = stateRef.current;
-    // Reset state deeply
     Object.assign(state, JSON.parse(JSON.stringify(INITIAL_GAME_STATE)));
     
-    // Apply character stats
     state.player.characterId = character.id;
     state.player.maxHp = character.hp;
     state.player.hp = character.hp;
@@ -64,8 +160,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     state.player.emoji = character.emoji;
     state.player.radius = character.radius;
     state.player.filter = character.filter;
+    state.player.airborneTimer = 0;
+    state.player.activeAbility = { ...INITIAL_GAME_STATE.player.activeAbility }; 
     
-    // Setup Biome (Default PARK for now, could be randomized)
     state.biome = 'PARK'; 
     const biomeData = BIOME_CONFIG[state.biome];
     state.mapBounds = { 
@@ -75,29 +172,91 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         maxY: biomeData.bounds 
     };
     
-    // Generate Obstacles
     state.obstacles = [];
+    const { minX, maxX, minY, maxY } = state.mapBounds;
+    
+    // Initialize Background Pattern
+    if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+            bgPatternRef.current = createGroundPattern(state.biome, ctx);
+        }
+    }
+
     for(let i=0; i<biomeData.obstacleCount; i++) {
-        state.obstacles.push({
-            id: `obs-${i}`,
-            x: randomRange(state.mapBounds.minX, state.mapBounds.maxX),
-            y: randomRange(state.mapBounds.minY, state.mapBounds.maxY),
-            radius: 30,
-            type: 'OBSTACLE',
-            color: '#ffffff', // Not used for obstacles now
-            hp: 100, maxHp: 100, destructible: false, rotation: Math.random() * 6.28,
-            material: 'WOOD',
-            width: Math.random() > 0.7 ? 60 : undefined, // Some rects
-            height: Math.random() > 0.7 ? 40 : undefined
-        });
+        const x = randomRange(minX + 50, maxX - 50); // Keep obstacles away from fence slightly
+        const y = randomRange(minY + 50, maxY - 50);
+        const id = `obs-${i}`;
+        let obs: Obstacle = {
+             id, x, y, radius: 30, type: 'OBSTACLE', color: '#fff', hp: 100, maxHp: 100, 
+             destructible: false, rotation: Math.random() * 0.2 - 0.1, material: 'WOOD',
+             isCover: false, width: undefined, height: undefined
+        };
+
+        if (state.biome === 'PARK') {
+            if (Math.random() > 0.7) {
+                obs = { ...obs, 
+                    subtype: 'BENCH', material: 'WOOD', destructible: true, 
+                    width: 60, height: 25, color: '#8D6E63', hp: 50, maxHp: 50,
+                    isCover: false
+                };
+            } else {
+                obs = { ...obs, 
+                    subtype: 'TREE', material: 'WOOD', destructible: false,
+                    radius: randomRange(30, 50), color: '#2F855A',
+                    isCover: true
+                };
+            }
+        } else if (state.biome === 'PARKING_LOT') {
+             const rnd = Math.random();
+             if (rnd > 0.7) {
+                 const carColors = ['#E53E3E', '#3182CE', '#D69E2E', '#718096', '#A0AEC0'];
+                 obs = { ...obs,
+                     subtype: 'CAR', material: 'METAL', destructible: false,
+                     width: 90, height: 45, color: carColors[Math.floor(Math.random()*carColors.length)],
+                     isCover: true, hp: 500, maxHp: 500
+                 };
+             } else if (rnd > 0.4) {
+                 obs = { ...obs,
+                     subtype: 'WALL', material: 'STONE', destructible: false,
+                     width: 40, height: 40, color: '#A0AEC0', isCover: true
+                 };
+             } else {
+                 obs = { ...obs,
+                     subtype: 'PUDDLE', material: 'STONE', destructible: false,
+                     radius: randomRange(40, 60), color: '#1A202C', 
+                     width: undefined, height: undefined 
+                 };
+             }
+        } else if (state.biome === 'MARS') {
+             const rnd = Math.random();
+             if (rnd > 0.7) {
+                 const isExplosive = Math.random() > 0.8;
+                 obs = { ...obs,
+                     subtype: 'CRYSTAL', material: 'CRYSTAL', destructible: true,
+                     radius: randomRange(20, 40), color: '#D53F8C',
+                     hp: 80, maxHp: 80, isCover: true,
+                     explosive: isExplosive, explodeRadius: 100, explodeDamage: 50
+                 };
+             } else {
+                 obs = { ...obs,
+                     subtype: 'GEYSER', material: 'STONE', destructible: false,
+                     radius: 25, color: '#E53E3E',
+                     emitType: 'SMOKE'
+                 };
+             }
+        }
+        state.obstacles.push(obs);
     }
 
     if (musicEnabled) playMusic(state.biome);
 
-    return () => stopMusic();
+    return () => {
+        window.removeEventListener('resize', updateSize);
+        stopMusic();
+    }
   }, [character, musicEnabled]);
 
-  // Input Listeners
   useEffect(() => {
       const handleKey = (e: KeyboardEvent, isDown: boolean) => {
           const k = e.key.toLowerCase();
@@ -106,12 +265,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           if (k === 'a' || k === 'arrowleft') inputRef.current.left = isDown;
           if (k === 'd' || k === 'arrowright') inputRef.current.right = isDown;
           if (k === 'shift') inputRef.current.sprint = isDown;
+          if (k === ' ') inputRef.current.ability = isDown; 
           if (isDown && k === 'escape') onTogglePause();
       };
       window.addEventListener('keydown', e => handleKey(e, true));
       window.addEventListener('keyup', e => handleKey(e, false));
       
-      // Touch / Joystick Listeners
       const canvas = canvasRef.current;
       
       const handleTouchStart = (e: TouchEvent) => {
@@ -123,34 +282,42 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const canvasWidth = currentCanvas.width; 
         const canvasHeight = currentCanvas.height;
 
-        // 1. Pause Button Hit Check
         const pauseBtnSize = 40;
         const pauseBtnX = canvasWidth - padding - pauseBtnSize;
         const pauseBtnY = padding;
 
-        // 2. Sprint Button Hit Check
+        // Push buttons up slightly to avoid home bars on mobile
+        const bottomOffset = 40;
         const sprintBtnRadius = 35;
         const sprintBtnX = canvasWidth - padding - sprintBtnRadius;
-        const sprintBtnY = canvasHeight - padding - sprintBtnRadius - 20; // Moved up slightly to avoid edge
+        const sprintBtnY = canvasHeight - padding - sprintBtnRadius - bottomOffset; 
+
+        const abilityBtnRadius = 30;
+        const abilityBtnX = sprintBtnX - 90;
+        const abilityBtnY = sprintBtnY + 10;
 
         for(let i=0; i<e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
             
-            // Check Pause
             if (t.clientX >= pauseBtnX - 10 && t.clientX <= pauseBtnX + pauseBtnSize + 10 &&
                 t.clientY >= pauseBtnY - 10 && t.clientY <= pauseBtnY + pauseBtnSize + 10) {
                 onTogglePause();
                 continue;
             }
 
-            // Check Sprint
             const distSprint = Math.hypot(t.clientX - sprintBtnX, t.clientY - sprintBtnY);
             if (distSprint < sprintBtnRadius + 15) {
                 touchRef.current.sprintId = t.identifier;
                 continue;
             }
 
-            // Joystick (if not other buttons and joystick free)
+            const distAbility = Math.hypot(t.clientX - abilityBtnX, t.clientY - abilityBtnY);
+            if (distAbility < abilityBtnRadius + 15) {
+                inputRef.current.ability = true;
+                setTimeout(() => { inputRef.current.ability = false; }, 100); 
+                continue;
+            }
+
             if (touchRef.current.joyId === null && t.clientX < canvasWidth / 2) {
                 touchRef.current.joyId = t.identifier;
                 touchRef.current.joyStartX = t.clientX;
@@ -204,50 +371,48 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       };
   }, [onTogglePause]);
 
-  // Main Game Loop
   useEffect(() => {
       const ctx = canvasRef.current?.getContext('2d');
       if (!ctx) return;
 
       const render = () => {
-          const padding = 20; // Define padding for HUD
+          const padding = 20; 
 
-          // UPDATE PHASE
           if (!paused) {
               const state = stateRef.current;
               state.time++;
 
-              // Player Update
               const p = state.player;
               if (p.invincibleTimer && p.invincibleTimer > 0) p.invincibleTimer--;
               if (p.xpFlashTimer && p.xpFlashTimer > 0) p.xpFlashTimer--;
+              if (p.airborneTimer && p.airborneTimer > 0) {
+                  p.airborneTimer--;
+              } else {
+                  p.airborneTimer = 0;
+              }
 
-              // Screen Shake Update
               if (state.shake.duration > 0) {
                   state.shake.duration--;
-                  state.shake.intensity *= 0.95; // Decay
+                  state.shake.intensity *= 0.95; 
                   if (state.shake.duration <= 0) {
                       state.shake.intensity = 0;
                   }
               }
 
-              // Player Movement
               let dx = 0, dy = 0;
               
-              // Keyboard Input
               if (inputRef.current.up) dy -= 1;
               if (inputRef.current.down) dy += 1;
               if (inputRef.current.left) dx -= 1;
               if (inputRef.current.right) dx += 1;
 
-              // Joystick Input
               if (touchRef.current.joyId !== null) {
                   const maxDist = 50;
                   const jx = touchRef.current.joyCurX - touchRef.current.joyStartX;
                   const jy = touchRef.current.joyCurY - touchRef.current.joyStartY;
                   const dist = Math.hypot(jx, jy);
                   
-                  if (dist > 10) { // Deadzone
+                  if (dist > 10) { 
                       const scale = Math.min(dist, maxDist) / maxDist;
                       dx = (jx / dist) * scale;
                       dy = (jy / dist) * scale;
@@ -256,15 +421,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               
               const isMoving = dx !== 0 || dy !== 0;
 
-              // Player Animation Update
               p.animationState = isMoving ? 'WALKING' : 'IDLE';
               const animDef = SPRITE_DEFS.SQUIRREL.animations[p.animationState];
               p.frameTimer = (p.frameTimer + 1) % animDef.speed;
               if (p.frameTimer === 0) {
-                  p.animationFrame = (p.animationFrame + 1) % animDef.frames;
+                  p.animationFrame = (p.animationFrame + 1) % animDef.frames.length;
               }
 
-              // Sprint Logic
               let currentSpeed = p.speed;
               const wantsToSprint = inputRef.current.sprint || touchRef.current.sprintId !== null;
               
@@ -273,9 +436,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
               if (wantsToSprint && p.stamina > 0 && isMoving) {
                   p.isSprinting = true;
-                  currentSpeed *= 1.6; // 60% boost
-                  p.stamina = Math.max(0, p.stamina - 1); // drain per frame
-                  if (state.time % 5 === 0) {
+                  currentSpeed *= 1.6; 
+                  p.stamina = Math.max(0, p.stamina - 1); 
+                  if (state.time % 5 === 0 && !p.airborneTimer) {
                       state.particles.push({
                           id: `dust-${Math.random()}`, x: p.x + (Math.random()-0.5)*10, y: p.y + p.radius, radius: 2,
                           velocity: {x: -dx*2, y: -dy*2}, life: 15, maxLife: 15, scale: randomRange(0.5, 1.5),
@@ -289,33 +452,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       p.stamina = Math.min(p.maxStamina, p.stamina + regenRate);
                   }
               }
+              
+              if (p.airborneTimer > 0) {
+                  currentSpeed *= 1.5;
+              }
 
               if (dx || dy) {
                   const len = Math.hypot(dx, dy);
                   if (len > 1) { dx /= len; dy /= len; }
-                  
-                  // p.rotation = Math.atan2(dy, dx); // No longer needed for sprite facing
 
                   const nextX = p.x + dx * currentSpeed;
                   const nextY = p.y + dy * currentSpeed;
                   
                   const b = state.mapBounds;
-                  let canMoveX = nextX >= b.minX && nextX <= b.maxX;
-                  let canMoveY = nextY >= b.minY && nextY <= b.maxY;
+                  let canMoveX = nextX >= b.minX + p.radius && nextX <= b.maxX - p.radius;
+                  let canMoveY = nextY >= b.minY + p.radius && nextY <= b.maxY - p.radius;
 
-                  if (canMoveX || canMoveY) {
+                  if ((canMoveX || canMoveY) && !p.airborneTimer) {
                       for (const obs of state.obstacles) {
-                          const obsW = obs.width || obs.radius * 2;
-                          const obsH = obs.height || obs.radius * 2;
-                          const isRect = !!obs.width;
-                          
-                          if (isRect) {
-                             if (Math.abs(nextX - obs.x) < obsW/2 + p.radius && Math.abs(p.y - obs.y) < obsH/2 + p.radius) canMoveX = false;
-                             if (Math.abs(p.x - obs.x) < obsW/2 + p.radius && Math.abs(nextY - obs.y) < obsH/2 + p.radius) canMoveY = false;
-                          } else {
-                              if (Math.hypot(nextX - obs.x, p.y - obs.y) < p.radius + obs.radius) canMoveX = false;
-                              if (Math.hypot(p.x - obs.x, nextY - obs.y) < p.radius + obs.radius) canMoveY = false;
-                          }
+                          if (obs.subtype === 'PUDDLE') continue; 
+                          if (obs.subtype === 'GEYSER') continue; 
+
+                          if (checkObstacleCollision(nextX, p.y, p.radius, obs)) canMoveX = false;
+                          if (checkObstacleCollision(p.x, nextY, p.radius, obs)) canMoveY = false;
                       }
                   }
 
@@ -325,39 +484,241 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   p.facing = dx < 0 ? 'LEFT' : dx > 0 ? 'RIGHT' : p.facing;
               }
 
-              // Spawning Logic
+              const ability = p.activeAbility;
+              if (ability) {
+                  if (ability.activeTimer > 0) {
+                      ability.activeTimer--;
+                      if (state.time % 5 === 0) {
+                          state.particles.push({
+                              id: `aura-${Math.random()}`, x: p.x + randomRange(-10, 10), y: p.y + randomRange(-10, 10),
+                              radius: randomRange(2, 4), velocity: {x:0, y:-1}, life: 10, maxLife: 10,
+                              scale: 1, type: 'SPARK', color: '#F6E05E'
+                          });
+                      }
+                      if (ability.type === 'NUT_BARRAGE') {
+                          if (state.time % 3 === 0) { 
+                              const baseAngle = p.facing === 'RIGHT' ? 0 : Math.PI;
+                              const spread = randomRange(-0.4, 0.4);
+                              const angle = baseAngle + spread;
+                              state.projectiles.push({
+                                  id: `barrage-${state.time}-${Math.random()}`, x: p.x, y: p.y, 
+                                  radius: 4, type: 'NUT_SHELL', color: '#F6E05E',
+                                  velocity: { x: Math.cos(angle) * 14, y: Math.sin(angle) * 14 }, 
+                                  damage: 12, duration: 40, pierce: 2, rotation: 0, hitIds: []
+                              });
+                              if (soundEnabled && state.time % 6 === 0) playSound('NUT');
+                              triggerShake(1.5, 4); 
+                          }
+                      }
+                  } else if (ability.cooldownTimer > 0) {
+                      ability.cooldownTimer--;
+                  } else if (inputRef.current.ability) {
+                      ability.activeTimer = ability.duration;
+                      ability.cooldownTimer = ability.cooldown;
+                      if (soundEnabled) playSound('LEVELUP'); 
+                      state.texts.push({
+                          id: `txt-${Math.random()}`, x: p.x, y: p.y - 40, 
+                          text: "NUT BARRAGE!", life: 40, color: '#F6E05E', velocity: {x:0, y:-1}
+                      });
+                  }
+              }
+
+              state.obstacles.forEach(obs => {
+                  if (obs.subtype === 'GEYSER' && p.airborneTimer === 0) {
+                      if (checkObstacleCollision(p.x, p.y, p.radius, obs)) {
+                          p.airborneTimer = 60; 
+                          state.particles.push({
+                              id: `launch-${Math.random()}`, x: p.x, y: p.y, radius: 20, 
+                              velocity: {x:0, y:0}, life: 30, maxLife: 30, scale: 1.5, 
+                              type: 'SMOKE', color: 'rgba(255,255,255,0.5)'
+                          });
+                          playSound('EXPLOSION'); 
+                      }
+                  }
+                  if (obs.subtype === 'GEYSER' && state.time % 10 === 0) {
+                      state.particles.push({
+                          id: `steam-${Math.random()}`, x: obs.x + (Math.random()-0.5)*10, y: obs.y, 
+                          radius: randomRange(2,5), velocity: {x: (Math.random()-0.5), y: -2}, 
+                          life: 40, maxLife: 40, scale: 1.2, type: 'SMOKE', color: 'rgba(255,255,255,0.3)'
+                      });
+                  }
+              });
+
+              let isInCover = false;
+              if (!p.airborneTimer) {
+                  for (const obs of state.obstacles) {
+                      if (obs.isCover && checkObstacleCollision(p.x, p.y, p.radius, obs, 15)) {
+                          isInCover = true;
+                          break;
+                      }
+                  }
+              }
+
               const waveInfo = STAGE_CONFIGS[stageDuration];
               const currentWave = Math.floor(state.time / (waveInfo.waveDuration * 60)) + 1;
               state.wave = currentWave;
               
               if (state.time % 60 === 0 && state.enemies.length < 50 + (currentWave * 5)) {
-                  const angle = Math.random() * Math.PI * 2;
-                  const dist = CANVAS_WIDTH/2 + 100;
-                  state.enemies.push({
-                      id: `e-${state.time}-${Math.random()}`, x: p.x + Math.cos(angle) * dist, y: p.y + Math.sin(angle) * dist,
-                      radius: 12, type: 'ZOMBIE', color: COLORS.zombie, hp: 20 + (currentWave * 5), maxHp: 20 + (currentWave * 5),
-                      speed: 1 + (Math.random() * 1), damage: 5, knockback: {x:0, y:0}, statusEffects: [],
-                      animationState: 'WALKING', animationFrame: 0, frameTimer: 0
-                  });
+                  // New Stealth Spawn Logic
+                  const viewW = ctx.canvas.width;
+                  const viewH = ctx.canvas.height;
+                  const diagonal = Math.hypot(viewW, viewH);
+                  const spawnRadius = (diagonal / 2) + 100; // Just outside corners
+
+                  for(let attempt=0; attempt<10; attempt++) {
+                      const angle = Math.random() * Math.PI * 2;
+                      const spawnX = p.x + Math.cos(angle) * spawnRadius;
+                      const spawnY = p.y + Math.sin(angle) * spawnRadius;
+
+                      // Check if inside Map Bounds (Fence)
+                      const b = state.mapBounds;
+                      if (spawnX >= b.minX + 20 && spawnX <= b.maxX - 20 &&
+                          spawnY >= b.minY + 20 && spawnY <= b.maxY - 20) {
+                          
+                          // Valid Spawn
+                          let enemyType = 'ZOMBIE';
+                          let enemyHp = 20 + (currentWave * 5);
+                          let enemySpeed = 1 + (Math.random() * 1);
+                          let enemyRadius = 12;
+                          let enemyColor = COLORS.zombie;
+
+                          // Spawn logic based on biome and wave
+                          if (state.biome === 'PARKING_LOT' && currentWave >= 3) {
+                              if (Math.random() > 0.8) enemyType = 'ROBOT';
+                          } else if (state.biome === 'MARS' && currentWave >= 2) {
+                              if (Math.random() > 0.7) enemyType = 'ALIEN';
+                          }
+
+                          if (enemyType === 'ROBOT') {
+                              enemyHp = 40 + (currentWave * 8);
+                              enemySpeed = 0.8 + (Math.random() * 0.4);
+                              enemyColor = COLORS.robot;
+                              enemyRadius = 14;
+                          } else if (enemyType === 'ALIEN') {
+                              enemyHp = 30 + (currentWave * 6);
+                              enemySpeed = 2.0 + (Math.random() * 0.5);
+                              enemyColor = COLORS.alien;
+                              enemyRadius = 10;
+                          } else if (currentWave >= 2 && Math.random() > 0.7) {
+                              enemyType = 'SWARM_ZOMBIE';
+                              enemyHp = 15 + (currentWave * 2); 
+                              enemySpeed = 2.5 + (Math.random() * 0.5); 
+                              enemyRadius = 10; 
+                              enemyColor = '#9AE6B4'; 
+                          }
+
+                          state.enemies.push({
+                              id: `e-${state.time}-${Math.random()}`, x: spawnX, y: spawnY,
+                              radius: enemyRadius, type: enemyType as any, color: enemyColor, 
+                              hp: enemyHp, maxHp: enemyHp,
+                              speed: enemySpeed, damage: 5, knockback: {x:0, y:0}, statusEffects: [],
+                              animationState: 'WALKING', animationFrame: 0, frameTimer: 0
+                          });
+                          break; 
+                      }
+                  }
               }
 
-              // Enemy Logic
               state.enemies.forEach(e => {
-                  const angle = Math.atan2(p.y - e.y, p.x - e.x);
-                  e.x += Math.cos(angle) * e.speed;
-                  e.y += Math.sin(angle) * e.speed;
+                  let speedMod = 1;
                   
-                  // Animation Update
+                  e.statusEffects = e.statusEffects.filter(ef => ef.duration > 0);
+                  e.statusEffects.forEach(ef => {
+                      ef.duration--;
+                      if (ef.type === 'SLOW') speedMod *= (1 - ef.magnitude);
+                  });
+
+                  if (state.biome === 'PARKING_LOT') {
+                      for(const obs of state.obstacles) {
+                          if (obs.subtype === 'PUDDLE' && checkObstacleCollision(e.x, e.y, e.radius, obs)) {
+                              if (!e.statusEffects.some(ef => ef.type === 'SLOW')) {
+                                  e.statusEffects.push({ type: 'SLOW', duration: 10, magnitude: 0.5 });
+                              }
+                          }
+                      }
+                  }
+
+                  let dx = p.x - e.x;
+                  let dy = p.y - e.y;
+                  
+                  if (e.type === 'SWARM_ZOMBIE') {
+                      const distToPlayer = Math.hypot(dx, dy);
+                      let moveX = dx / distToPlayer;
+                      let moveY = dy / distToPlayer;
+
+                      let sepX = 0, sepY = 0; 
+                      let cohX = 0, cohY = 0; 
+                      let neighborCount = 0;
+
+                      state.enemies.forEach(other => {
+                          if (e.id === other.id) return;
+                          if (other.type !== 'SWARM_ZOMBIE') return;
+
+                          const dist = Math.hypot(e.x - other.x, e.y - other.y);
+                          if (dist < 150) { 
+                              cohX += other.x;
+                              cohY += other.y;
+                              neighborCount++;
+
+                              if (dist < 30) {
+                                  const pushFactor = (30 - dist) / 30; 
+                                  sepX -= (other.x - e.x) / dist * pushFactor;
+                                  sepY -= (other.y - e.y) / dist * pushFactor;
+                              }
+                          }
+                      });
+
+                      if (neighborCount > 0) {
+                          cohX = (cohX / neighborCount) - e.x;
+                          cohY = (cohY / neighborCount) - e.y;
+                          const cohLen = Math.hypot(cohX, cohY) || 1;
+                          cohX /= cohLen;
+                          cohY /= cohLen;
+
+                          if (neighborCount > 2) {
+                              speedMod *= 1.3; 
+                              if (state.time % 20 === 0) {
+                                  state.particles.push({
+                                      id: `frenzy-${e.id}-${state.time}`, x: e.x, y: e.y - e.radius, radius: 2,
+                                      velocity: {x:0, y:-1}, life: 10, maxLife: 10, scale: 1,
+                                      type: 'SPARK', color: '#F687B3'
+                                  });
+                              }
+                          }
+                      }
+
+                      const finalDx = (moveX * 1.0) + (sepX * 1.5) + (cohX * 0.5);
+                      const finalDy = (moveY * 1.0) + (sepY * 1.5) + (cohY * 0.5);
+
+                      const finalLen = Math.hypot(finalDx, finalDy) || 1;
+                      e.x += (finalDx / finalLen) * e.speed * speedMod;
+                      e.y += (finalDy / finalLen) * e.speed * speedMod;
+
+                  } else {
+                      const angle = Math.atan2(dy, dx);
+                      e.x += Math.cos(angle) * e.speed * speedMod;
+                      e.y += Math.sin(angle) * e.speed * speedMod;
+                  }
+                  
                   const animDef = SPRITE_DEFS.ZOMBIE.animations[e.animationState];
                   e.frameTimer = (e.frameTimer + 1) % animDef.speed;
                   if (e.frameTimer === 0) {
-                      e.animationFrame = (e.animationFrame + 1) % animDef.frames;
+                      e.animationFrame = (e.animationFrame + 1) % animDef.frames.length;
                   }
 
-                  if (!p.invincibleTimer || p.invincibleTimer <= 0) {
+                  if ((!p.invincibleTimer || p.invincibleTimer <= 0) && !p.airborneTimer) {
                       if (Math.hypot(p.x - e.x, p.y - e.y) < p.radius + e.radius) {
-                         p.hp -= e.damage;
-                         p.invincibleTimer = 30; // 0.5s of invincibility
+                         let dmg = e.damage;
+                         if (isInCover) {
+                             dmg = Math.ceil(dmg * 0.5); 
+                             state.texts.push({
+                                id: `cover-${Math.random()}`, x: p.x, y: p.y - 30, 
+                                text: "COVER!", life: 20, color: '#63B3ED', velocity: {x:0, y:-1}
+                             });
+                         }
+
+                         p.hp -= dmg;
+                         p.invincibleTimer = 30; 
                          if (soundEnabled) playSound('HIT');
                          
                          if (e.type.startsWith('BOSS')) {
@@ -369,25 +730,105 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   }
               });
 
-              // Weapon Logic
               p.weapons.forEach(w => {
                   if (w.cooldownTimer > 0) w.cooldownTimer--;
-                  else {
-                      w.cooldownTimer = w.cooldown;
-                      const target = state.enemies.sort((a,b) => Math.hypot(a.x-p.x, a.y-p.y) - Math.hypot(b.x-p.x, b.y-p.y))[0];
-                      const angle = target ? Math.atan2(target.y - p.y, target.x - p.x) : (p.facing === 'RIGHT' ? 0 : Math.PI);
+                  
+                  if (w.type === 'NUT_THROW' && w.cooldownTimer <= 0) {
+                      const target = state.enemies.length > 0 
+                          ? state.enemies.reduce((closest, curr) => {
+                              const dist = Math.hypot(curr.x - p.x, curr.y - p.y);
+                              return dist < closest.dist ? { enemy: curr, dist } : closest;
+                          }, { enemy: state.enemies[0], dist: Infinity }).enemy
+                          : null;
                       
-                      state.projectiles.push({
-                          id: `p-${state.time}-${Math.random()}`, x: p.x, y: p.y, radius: 5, type: 'NUT_SHELL', color: '#FBD38D',
-                          velocity: { x: Math.cos(angle) * w.speed, y: Math.sin(angle) * w.speed },
-                          damage: w.damage, duration: 60, pierce: 1, rotation: 0, hitIds: [],
-                          explodeRadius: Math.random() > 0.95 ? 50 : 0, // 5% chance to be an exploding acorn for testing
-                      });
+                      w.cooldownTimer = w.cooldown;
+                      const baseAngle = target ? Math.atan2(target.y - p.y, target.x - p.x) : (p.facing === 'RIGHT' ? 0 : Math.PI);
+                      
+                      const spread = 0.2; 
+                      const totalSpread = spread * (w.amount - 1);
+                      const startAngle = baseAngle - totalSpread / 2;
+
+                      for (let i = 0; i < w.amount; i++) {
+                          const angle = startAngle + (w.amount > 1 ? i * spread : 0);
+                          state.projectiles.push({
+                              id: `p-${state.time}-${Math.random()}`, x: p.x, y: p.y, radius: w.area, type: 'NUT_SHELL', color: '#FBD38D',
+                              velocity: { x: Math.cos(angle) * w.speed, y: Math.sin(angle) * w.speed },
+                              damage: w.damage, duration: 60, pierce: 1, rotation: 0, hitIds: [],
+                              explodeRadius: Math.random() > 0.95 ? 50 : 0,
+                          });
+                      }
                       if (soundEnabled) playSound('NUT');
+                  } 
+                  else if (w.type === 'CROW_AURA') {
+                      // Crows tick for damage independently of their rotation
+                      if (w.cooldownTimer <= 0) {
+                           w.cooldownTimer = w.cooldown;
+                           
+                           let hit = false;
+                           // Check collision for all crows
+                           for (let i = 0; i < w.amount; i++) {
+                                const angle = (state.time * w.speed) + (i * (Math.PI * 2 / w.amount));
+                                const cx = p.x + Math.cos(angle) * w.area;
+                                const cy = p.y + Math.sin(angle) * w.area;
+                                const crowRadius = 25; // Generous hit box
+
+                                for (const e of state.enemies) {
+                                    if (Math.hypot(e.x - cx, e.y - cy) < e.radius + crowRadius) {
+                                        e.hp -= w.damage;
+                                        state.texts.push({
+                                            id: `crow-${Math.random()}`, x: e.x, y: e.y, text: `${Math.round(w.damage)}`,
+                                            life: 15, color: '#D53F8C', velocity: {x:0, y:-1}
+                                        });
+                                        
+                                        state.particles.push({
+                                            id: `hit-${Math.random()}`, x: cx, y: cy, radius: 2,
+                                            velocity: {x:0, y:0}, life: 10, maxLife: 10, scale: 1, type: 'SPARK', color: '#D53F8C'
+                                        });
+                                        
+                                        // Minor knockback away from player (keeps enemies at bay)
+                                        const kAngle = Math.atan2(e.y - p.y, e.x - p.x);
+                                        e.x += Math.cos(kAngle) * 3;
+                                        e.y += Math.sin(kAngle) * 3;
+
+                                        hit = true;
+                                    }
+                                }
+                           }
+                           if (soundEnabled && hit) playSound('AURA');
+                      }
+                  } 
+                  else if (w.type === 'ACORN_CANNON' && w.cooldownTimer <= 0) {
+                      const target = state.enemies.length > 0 
+                          ? state.enemies.reduce((closest, curr) => {
+                              const dist = Math.hypot(curr.x - p.x, curr.y - p.y);
+                              return dist < closest.dist ? { enemy: curr, dist } : closest;
+                          }, { enemy: state.enemies[0], dist: Infinity }).enemy
+                          : null;
+
+                       if (target) {
+                            w.cooldownTimer = w.cooldown;
+                            const angle = Math.atan2(target.y - p.y, target.x - p.x);
+                            for (let i = 0; i < w.amount; i++) {
+                                const fireAngle = angle + (i - w.amount/2) * 0.1; 
+                                state.projectiles.push({
+                                    id: `cannon-${state.time}-${Math.random()}`, x: p.x, y: p.y, 
+                                    radius: Math.min(20, Math.max(8, w.area / 5)), 
+                                    type: 'EXPLODING_ACORN', 
+                                    color: '#3E2723',
+                                    velocity: { x: Math.cos(fireAngle) * w.speed, y: Math.sin(fireAngle) * w.speed },
+                                    damage: w.damage, 
+                                    duration: 120, 
+                                    pierce: 0, 
+                                    rotation: 0, 
+                                    explodeRadius: w.area, 
+                                    hitIds: []
+                                });
+                            }
+                            if (soundEnabled) playSound('CANNON');
+                       }
                   }
               });
 
-              // Projectiles Update
               for (let i = state.projectiles.length - 1; i >= 0; i--) {
                   const proj = state.projectiles[i];
                   const speed = Math.hypot(proj.velocity.x, proj.velocity.y);
@@ -395,6 +836,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   const stepX = proj.velocity.x / steps;
                   const stepY = proj.velocity.y / steps;
                   
+                  if (proj.type === 'EXPLODING_ACORN' && state.time % 3 === 0) {
+                      state.particles.push({
+                          id: `trail-${Math.random()}`, x: proj.x, y: proj.y, radius: randomRange(2,4),
+                          velocity: {x: randomRange(-0.5,0.5), y: randomRange(-0.5,0.5)},
+                          life: 15, maxLife: 15, scale: 0.9, type: 'SMOKE', color: 'rgba(100,100,100,0.5)'
+                      });
+                  }
+
+                  if (proj.id.startsWith('barrage-') && state.time % 2 === 0) {
+                      state.particles.push({
+                          id: `trail-${Math.random()}`, x: proj.x, y: proj.y, radius: randomRange(1, 3),
+                          velocity: {x: randomRange(-0.5,0.5), y: randomRange(-0.5,0.5)},
+                          life: 8, maxLife: 8, scale: 1, type: 'SPARK', color: '#FFFF00'
+                      });
+                  }
+
                   let destroyed = false;
                   proj.rotation += 0.2;
 
@@ -403,19 +860,61 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       proj.y += stepY;
 
                       let hitObstacle = false;
-                      for (const obs of state.obstacles) { /* ... obstacle collision ... */ }
-                      if (hitObstacle) { /* ... handle obstacle hit ... */ }
+                      for (const obs of state.obstacles) {
+                          if (obs.subtype === 'PUDDLE' || obs.subtype === 'GEYSER') continue; 
+                          if (checkObstacleCollision(proj.x, proj.y, proj.radius, obs)) {
+                              hitObstacle = true;
+                              
+                              state.particles.push({
+                                  id: `spark-${Math.random()}`, x: proj.x, y: proj.y, radius: 2,
+                                  velocity: {x: -proj.velocity.x * 0.5 + (Math.random()-0.5), y: -proj.velocity.y * 0.5 + (Math.random()-0.5)},
+                                  life: 10, maxLife: 10, scale: 1, type: 'SPARK', color: '#FFF'
+                              });
 
-                      for (const e of state.enemies) {
-                         if (proj.hitIds && proj.hitIds.includes(e.id)) continue;
-                         if (Math.hypot(e.x - proj.x, e.y - proj.y) < e.radius + proj.radius) {
-                             e.hp -= proj.damage;
-                             state.texts.push({ id: `txt-${Math.random()}`, x: e.x, y: e.y, text: `${Math.round(proj.damage)}`, life: 30, color: '#fff', velocity: {x:0, y:-1}});
-                             if (!proj.hitIds) proj.hitIds = [];
-                             proj.hitIds.push(e.id);
-                             proj.pierce--;
-                             if (proj.pierce <= 0) { destroyed = true; break; }
+                              if (obs.destructible) {
+                                  obs.hp -= proj.damage;
+                                  state.texts.push({
+                                      id: `dmg-${Math.random()}`, x: obs.x, y: obs.y - 20, 
+                                      text: `${Math.round(proj.damage)}`, life: 20, color: '#ddd', velocity: {x:0, y:-1}
+                                  });
+                              }
+                              break; 
+                          }
+                      }
+
+                      if (hitObstacle) {
+                          destroyed = true;
+                          break; 
+                      }
+                      
+                      if (proj.hostile) {
+                         if (!p.airborneTimer && Math.hypot(p.x - proj.x, p.y - proj.y) < p.radius + proj.radius) {
+                             if (isInCover && Math.random() > 0.2) {
+                                 state.texts.push({
+                                    id: `block-${Math.random()}`, x: p.x, y: p.y - 40, 
+                                    text: "BLOCKED", life: 20, color: '#63B3ED', velocity: {x:0, y:-1}
+                                 });
+                                 destroyed = true;
+                                 break;
+                             } else {
+                                 p.hp -= proj.damage;
+                                 destroyed = true;
+                                 state.texts.push({id: `dmg-${Math.random()}`, x: p.x, y: p.y, text: `-${proj.damage}`, life: 30, color: 'red', velocity: {x:0, y:-1}});
+                                 break;
+                             }
                          }
+                      } else {
+                          for (const e of state.enemies) {
+                             if (proj.hitIds && proj.hitIds.includes(e.id)) continue;
+                             if (Math.hypot(e.x - proj.x, e.y - proj.y) < e.radius + proj.radius) {
+                                 e.hp -= proj.damage;
+                                 state.texts.push({ id: `txt-${Math.random()}`, x: e.x, y: e.y, text: `${Math.round(proj.damage)}`, life: 30, color: '#fff', velocity: {x:0, y:-1}});
+                                 if (!proj.hitIds) proj.hitIds = [];
+                                 proj.hitIds.push(e.id);
+                                 proj.pierce--;
+                                 if (proj.pierce <= 0) { destroyed = true; break; }
+                             }
+                          }
                       }
                       if (destroyed) break;
                   }
@@ -428,6 +927,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                               id: `explosion-${Math.random()}`, x: proj.x, y: proj.y, radius: proj.explodeRadius, type: 'EXPLOSION',
                               color: 'rgba(255, 165, 0, 0.8)', life: 15, maxLife: 15, scale: 1, velocity: {x:0, y:0},
                           });
+                          
+                          for (const e of state.enemies) {
+                              if (Math.hypot(e.x - proj.x, e.y - proj.y) < proj.explodeRadius) {
+                                  e.hp -= proj.damage; 
+                                  const ang = Math.atan2(e.y - proj.y, e.x - proj.x);
+                                  e.x += Math.cos(ang) * 10;
+                                  e.y += Math.sin(ang) * 10;
+                              }
+                          }
+
                           triggerShake(proj.explodeRadius / 4, 25);
                           if (soundEnabled) playSound('EXPLOSION');
                       }
@@ -435,30 +944,55 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   }
               }
 
-              // Death & Drops
               for (let i = state.enemies.length - 1; i >= 0; i--) {
                   if (state.enemies[i].hp <= 0) {
                       const e = state.enemies[i];
                       state.kills++;
-                      state.drops.push({ id: `drop-${Math.random()}`, x: e.x, y: e.y, radius: 4, type: 'DROP', kind: 'XP', value: 10, color: '#4FD1C5'});
+                      state.score += 10;
+                      const xpValue = 15 + (state.wave - 1) * 2;
+                      state.drops.push({ id: `drop-${Math.random()}`, x: e.x, y: e.y, radius: 4, type: 'DROP', kind: 'XP', value: xpValue, color: '#4FD1C5'});
                       state.enemies.splice(i, 1);
                       if (soundEnabled) playSound('DEATH');
                   }
               }
 
-              // Pickup
+              for (let i = state.obstacles.length - 1; i >= 0; i--) {
+                  const obs = state.obstacles[i];
+                  if (obs.destructible && obs.hp <= 0) {
+                       for(let k=0; k<6; k++) {
+                          state.particles.push({
+                              id: `debris-${Math.random()}`, x: obs.x, y: obs.y, radius: randomRange(2,5),
+                              velocity: {x: randomRange(-3,3), y: randomRange(-3,3)},
+                              life: 30, maxLife: 30, scale: 1, type: 'SMOKE', color: '#718096'
+                          });
+                      }
+                      state.obstacles.splice(i, 1);
+                  }
+              }
+
               for (let i = state.drops.length - 1; i >= 0; i--) {
                   const d = state.drops[i];
                   const dist = Math.hypot(p.x - d.x, p.y - d.y);
-                  if (dist < 100) { d.x += (p.x - d.x) * 0.1; d.y += (p.y - d.y) * 0.1; }
-                  if (dist < p.radius + d.radius) {
+                  
+                  const pickupRange = p.magnetRadius || 150;
+
+                  if (dist < pickupRange) { 
+                      // Magnet effect
+                      d.x += (p.x - d.x) * 0.15; 
+                      d.y += (p.y - d.y) * 0.15; 
+                  }
+
+                  if (dist < p.radius + d.radius + (p.airborneTimer ? 20 : 0)) {
                       if (d.kind === 'XP') {
                           p.xp += d.value; p.xpFlashTimer = 20;
                           if (p.xp >= p.nextLevelXp) {
                               p.level++; p.xp -= p.nextLevelXp; p.nextLevelXp = Math.floor(p.nextLevelXp * 1.5);
                               if (soundEnabled) playSound('LEVELUP');
-                              const upgrades: Upgrade[] = UPGRADE_POOL_IDS.slice(0, 3).map(id => ({ id, name: id.replace('_', ' '), description: 'Upgrade!', rarity: 'COMMON', icon: '✨', apply: (pl: Player) => { pl.weapons[0].damage += 5; } }));
-                              onLevelUp(upgrades, (u) => u.apply(p));
+                              
+                              const shuffled = shuffle(ALL_UPGRADES);
+                              const offeredUpgrades = shuffled.slice(0, 3);
+                              
+                              onLevelUp(offeredUpgrades, (u) => u.apply(p));
                           }
                       }
                       if (soundEnabled) playSound('COLLECT');
@@ -466,7 +1000,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   }
               }
 
-              // Particle & Text Cleanup
               for (let i = state.particles.length - 1; i >= 0; i--) {
                 const pt = state.particles[i]; pt.x += pt.velocity.x; pt.y += pt.velocity.y; pt.life--;
                 if (pt.life <= 0) state.particles.splice(i, 1);
@@ -479,36 +1012,73 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               if (p.hp <= 0) onGameOver(state.score, state.time, state.kills);
           }
 
-          // DRAW PHASE
           const state = stateRef.current;
           const { width, height } = ctx.canvas;
           
-          ctx.fillStyle = BIOME_CONFIG[state.biome].bgColor;
-          ctx.fillRect(0, 0, width, height);
-          ctx.imageSmoothingEnabled = false; // For pixel art
-
+          // DRAW BACKGROUND PATTERN
           let camX = state.player.x - width / 2;
           let camY = state.player.y - height / 2;
 
-          // Apply Screen Shake
           if (state.shake.duration > 0 && state.shake.intensity > 0.1) {
               camX += (Math.random() - 0.5) * state.shake.intensity * 2;
               camY += (Math.random() - 0.5) * state.shake.intensity * 2;
           }
 
-          // Grid
-          ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
+          if (bgPatternRef.current) {
+              ctx.save();
+              // Anchor pattern to world coordinates by translating the pattern origin
+              const matrix = new DOMMatrix();
+              matrix.translateSelf(-camX, -camY);
+              bgPatternRef.current.setTransform(matrix);
+              
+              ctx.fillStyle = bgPatternRef.current;
+              ctx.fillRect(0, 0, width, height);
+              ctx.restore();
+          } else {
+              ctx.fillStyle = BIOME_CONFIG[state.biome].bgColor;
+              ctx.fillRect(0, 0, width, height);
+          }
+
+          ctx.imageSmoothingEnabled = false; 
+
+          // DRAW GRID (Faint overlay)
+          ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.lineWidth = 1;
           const gridSize = 100;
           const startX = Math.floor(camX / gridSize) * gridSize;
           const startY = Math.floor(camY / gridSize) * gridSize;
           for(let x = startX; x < camX + width; x += gridSize) { ctx.beginPath(); ctx.moveTo(x - camX, 0); ctx.lineTo(x - camX, height); ctx.stroke(); }
           for(let y = startY; y < camY + height; y += gridSize) { ctx.beginPath(); ctx.moveTo(0, y - camY); ctx.lineTo(width, y - camY); ctx.stroke(); }
 
-          // --- Drawing Logic ---
+          // DRAW CONCRETE FENCE BORDER
+          const bounds = state.mapBounds;
+          const fenceSize = 40;
+          
+          ctx.font = `${fenceSize}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // Helper to draw a line of emojis
+          const drawFenceLine = (x1: number, y1: number, x2: number, y2: number) => {
+              const dist = Math.hypot(x2 - x1, y2 - y1);
+              const count = Math.ceil(dist / fenceSize);
+              for(let i=0; i<=count; i++) {
+                  const fx = x1 + (x2 - x1) * (i/count);
+                  const fy = y1 + (y2 - y1) * (i/count);
+                  // Cull offscreen
+                  if (fx < camX - fenceSize || fx > camX + width + fenceSize || fy < camY - fenceSize || fy > camY + height + fenceSize) continue;
+                  ctx.fillText('🧱', fx - camX, fy - camY);
+              }
+          };
+
+          drawFenceLine(bounds.minX, bounds.minY, bounds.maxX, bounds.minY); // Top
+          drawFenceLine(bounds.minX, bounds.maxY, bounds.maxX, bounds.maxY); // Bottom
+          drawFenceLine(bounds.minX, bounds.minY, bounds.minX, bounds.maxY); // Left
+          drawFenceLine(bounds.maxX, bounds.minY, bounds.maxX, bounds.maxY); // Right
+
           const drawEntity = (e: Entity) => {
              if (e.type === 'EXPLOSION') {
                 const explosion = e as Particle;
-                const progress = (explosion.maxLife - explosion.life) / explosion.maxLife; // 0 to 1
+                const progress = (explosion.maxLife - explosion.life) / explosion.maxLife; 
                 ctx.save();
                 ctx.globalAlpha = 1 - progress;
                 ctx.beginPath();
@@ -521,109 +1091,194 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 return;
              }
              
+             // Visibility Cull
+             if (e.x + e.radius < camX || e.x - e.radius > camX + width || e.y + e.radius < camY || e.y - e.radius > camY + height) return;
+
+             let visualY = e.y;
+             let shadowScale = 1.0;
+             if (e.type === 'PLAYER') {
+                 const p = e as Player;
+                 if (p.airborneTimer && p.airborneTimer > 0) {
+                     const progress = p.airborneTimer / 60; 
+                     const jumpHeight = Math.sin(progress * Math.PI) * 60; 
+                     visualY -= jumpHeight;
+                     shadowScale = 0.5 + (0.5 * (1 - Math.sin(progress * Math.PI)));
+                 }
+             }
+
              ctx.save();
-             ctx.translate(e.x - camX, e.y - camY);
+             ctx.translate(e.x - camX, visualY - camY);
              
-             // Player specific effects (invincibility flash, etc.)
+             // Shared Shadow
+             ctx.save();
+             ctx.translate(0, e.y - visualY); 
+             ctx.fillStyle = 'rgba(0,0,0,0.3)';
+             ctx.beginPath();
+             ctx.ellipse(0, e.radius * 0.8, e.radius * shadowScale, e.radius * 0.3 * shadowScale, 0, 0, Math.PI*2);
+             ctx.fill();
+             ctx.restore();
+
              if (e.type === 'PLAYER') {
                  const p = e as Player;
                  if (p.invincibleTimer && p.invincibleTimer > 0 && state.time % 8 < 4) ctx.globalAlpha = 0.5;
                  if (p.xpFlashTimer && p.xpFlashTimer > 0) { ctx.shadowColor = '#4FD1C5'; ctx.shadowBlur = 25 * (p.xpFlashTimer / 20); }
+                 
+                 if (p.activeAbility && p.activeAbility.activeTimer > 0) {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.radius + 12, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(246, 224, 94, 0.3)';
+                    ctx.fill();
+                    ctx.strokeStyle = '#F6E05E';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                 }
+
+                 const isInCover = !p.airborneTimer && state.obstacles.some(obs => obs.isCover && checkObstacleCollision(p.x, p.y, p.radius, obs, 15));
+                 if (isInCover) {
+                     ctx.beginPath();
+                     ctx.arc(0, 0, p.radius + 8, 0, Math.PI * 2);
+                     ctx.strokeStyle = 'rgba(66, 153, 225, 0.6)'; 
+                     ctx.lineWidth = 3;
+                     ctx.stroke();
+                     ctx.fillStyle = '#4299E1';
+                     ctx.font = '16px monospace';
+                     ctx.fillText('🛡️', -10, -30);
+                 }
              }
              
              ctx.fillStyle = e.color;
-             ctx.strokeStyle = '#1a202c'; // Dark outline for definition
+             ctx.strokeStyle = '#1a202c'; 
              ctx.lineWidth = 2.5;
+
+             // EMOJI RENDER HELPER
+             const drawEmoji = (emoji: string, sizeMultiplier = 2, rotate = 0, bounce = 0) => {
+                ctx.font = `${e.radius * sizeMultiplier}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.rotate(rotate);
+                ctx.translate(0, -bounce);
+                ctx.fillText(emoji, 0, 0);
+             };
 
              switch (e.type) {
                 case 'PLAYER': {
                     const p = e as Player;
-                    const sheet = assets.SQUIRREL;
+                    const sheet = assets.PLAYER_SKIN;
                     const def = SPRITE_DEFS.SQUIRREL;
 
                     if (sheet) {
                       const anim = def.animations[p.animationState];
-                      const frame = p.animationFrame % anim.frames;
+                      const safeFrameIndex = p.animationFrame % anim.frames.length;
+                      const actualFrameIndex = anim.frames[safeFrameIndex];
+                      
+                      const col = actualFrameIndex % def.columns;
+                      const row = Math.floor(actualFrameIndex / def.columns);
+                      const sx = col * def.frameWidth;
+                      const sy = row * def.frameHeight;
+
                       ctx.save();
-                      if (p.filter) ctx.filter = p.filter;
+                      if (!assets.PLAYER_SKIN && p.filter) ctx.filter = p.filter; 
                       if (p.facing === 'LEFT') ctx.scale(-1, 1);
+                      if (p.airborneTimer && p.airborneTimer > 0) ctx.scale(1.2, 1.2);
+
                       ctx.drawImage(
                           sheet,
-                          frame * def.frameWidth, anim.row * def.frameHeight, def.frameWidth, def.frameHeight,
+                          sx, sy, def.frameWidth, def.frameHeight,
                           -def.frameWidth / 2, -def.frameHeight / 2, def.frameWidth, def.frameHeight
                       );
                       ctx.restore();
                     } else {
-                        // Fallback to emoji
-                        ctx.font = `${p.radius * 1.8}px sans-serif`;
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
+                        const bounce = p.animationState === 'WALKING' ? Math.abs(Math.sin(state.time * 0.3)) * 4 : 0;
+                        ctx.save();
+                        if (p.facing === 'LEFT') ctx.scale(-1, 1);
                         if (p.filter) ctx.filter = p.filter;
-                        ctx.fillText(p.emoji || '🐿️', 0, 0);
-                        ctx.filter = 'none'; // Reset filter
+                        drawEmoji(p.emoji || '🐿️', 2.2, 0, bounce);
+                        ctx.restore();
                     }
                     break;
                 }
-                case 'ZOMBIE': {
+                case 'SWARM_ZOMBIE': 
+                case 'ZOMBIE': 
+                case 'ROBOT':
+                case 'ALIEN': {
                     const enemy = e as Enemy;
-                    const sheet = assets.ZOMBIE;
-                    const def = SPRITE_DEFS.ZOMBIE;
+                    const def = SPRITE_DEFS[enemy.type] || SPRITE_DEFS['ZOMBIE']; // Fallback logic
+                    const sheet = assets[enemy.type];
 
-                    if (sheet) {
-                        const anim = def.animations[enemy.animationState];
-                        const frame = enemy.animationFrame % anim.frames;
-                        ctx.drawImage(
-                            sheet,
-                            frame * def.frameWidth, anim.row * def.frameHeight, def.frameWidth, def.frameHeight,
-                            -def.frameWidth / 2, -def.frameHeight / 2, def.frameWidth, def.frameHeight
-                        );
+                    if (sheet && SPRITE_DEFS[enemy.type]) {
+                        const anim = def.animations[enemy.animationState] || def.animations['WALKING'];
+                        const safeFrameIndex = enemy.animationFrame % anim.frames.length;
+                        const actualFrameIndex = anim.frames[safeFrameIndex];
+                        
+                        const col = actualFrameIndex % def.columns;
+                        const row = Math.floor(actualFrameIndex / def.columns);
+                        
+                        ctx.save();
+                        if (enemy.x < state.player.x) ctx.scale(-1, 1);
+                        // Scale up the sprite slightly to match hit circle
+                        ctx.drawImage(sheet, col * 32, row * 32, 32, 32, -enemy.radius * 1.8, -enemy.radius * 1.8, enemy.radius * 3.6, enemy.radius * 3.6);
+                        ctx.restore();
                     } else {
-                        // Fallback to emoji
-                        ctx.font = `${enemy.radius * 2}px sans-serif`;
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText('🧟', 0, 0);
+                        const bounce = enemy.animationState === 'WALKING' ? Math.abs(Math.sin(state.time * 0.2 + parseFloat(enemy.id.split('-')[2] || '0'))) * 3 : 0;
+                        const wiggle = Math.sin(state.time * 0.1 + parseFloat(enemy.id.split('-')[2] || '0')) * 0.1;
+
+                        let emoji = '🧟';
+                        if (enemy.type === 'SWARM_ZOMBIE') emoji = '🐀';
+                        if (enemy.type === 'ROBOT') emoji = '🤖';
+                        if (enemy.type === 'ALIEN') emoji = '👽';
+                        
+                        ctx.save();
+                        if (enemy.x < state.player.x) ctx.scale(-1, 1); 
+                        drawEmoji(emoji, 2.2, wiggle, bounce);
+                        ctx.restore();
                     }
                     break;
                 }
 
                 case 'NUT_SHELL':
-                    ctx.rotate((e as Projectile).rotation);
-                    ctx.beginPath();
-                    ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
-                    ctx.fill();
+                    drawEmoji('🌰', 2, (e as Projectile).rotation);
                     break; 
+                
+                case 'EXPLODING_ACORN':
+                    drawEmoji('🥥', 2, (e as Projectile).rotation);
+                    break;
 
                 case 'OBSTACLE':
                     const obs = e as Obstacle;
-                    ctx.rotate(obs.rotation);
-                    ctx.lineWidth = 4;
-                    if (obs.width && obs.height) {
-                        ctx.fillStyle = '#4A5568';
-                        ctx.beginPath();
-                        ctx.rect(-obs.width / 2, -obs.height / 2, obs.width, obs.height);
-                        ctx.fill();
-                        ctx.stroke();
+                    if (obs.subtype === 'BENCH') {
+                        drawEmoji('🪑', 1.5);
+                    } else if (obs.subtype === 'CAR') {
+                        drawEmoji('🚗', 2.5);
+                    } else if (obs.subtype === 'CRYSTAL') {
+                        drawEmoji('💎', 1.8);
+                    } else if (obs.subtype === 'TREE') {
+                        drawEmoji('🌲', 3);
+                    } else if (obs.subtype === 'PUDDLE') {
+                        drawEmoji('💧', 2);
+                    } else if (obs.subtype === 'GEYSER') {
+                        drawEmoji('🌋', 2);
+                    } else if (obs.subtype === 'WALL') {
+                        drawEmoji('🧱', 1.5);
                     } else {
-                        ctx.fillStyle = '#2F855A';
-                        ctx.beginPath();
-                        ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.stroke();
+                        drawEmoji('🪨', 2);
+                    }
+                    
+                    if (obs.destructible && obs.hp < obs.maxHp) {
+                        const w = 40;
+                        const h = 4;
+                        const hpPct = obs.hp / obs.maxHp;
+                        ctx.fillStyle = '#333';
+                        ctx.fillRect(-w/2, -obs.radius - 10, w, h);
+                        ctx.fillStyle = hpPct > 0.5 ? '#48BB78' : '#F56565';
+                        ctx.fillRect(-w/2, -obs.radius - 10, w * hpPct, h);
                     }
                     break;
                 
                 case 'DROP':
-                    // Diamond shape (rotated square)
-                    ctx.rotate(Math.PI / 4);
-                    ctx.beginPath();
-                    const dropSize = e.radius * 1.5;
-                    ctx.rect(-dropSize / 2, -dropSize / 2, dropSize, dropSize);
-                    ctx.fill();
+                    drawEmoji('💎', 1.5, Math.sin(state.time * 0.1) * 0.2);
                     break;
                 
                 default:
-                    // Default to circle for particles, etc.
                     ctx.beginPath();
                     ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
                     ctx.fill();
@@ -635,7 +1290,53 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           
           const entities = [...state.obstacles, ...state.drops, ...state.enemies, state.player, ...state.projectiles, ...state.particles].sort((a,b) => a.y - b.y);
           entities.forEach(e => drawEntity(e));
-          
+
+          // DRAW CROW AURA (On top of entities but below UI)
+          state.player.weapons.forEach(w => {
+            if (w.type === 'CROW_AURA') {
+                for (let i = 0; i < w.amount; i++) {
+                    const angle = (state.time * w.speed) + (i * (Math.PI * 2 / w.amount));
+                    const cx = state.player.x + Math.cos(angle) * w.area;
+                    const cy = state.player.y + Math.sin(angle) * w.area;
+                    
+                    const drawX = cx - camX;
+                    const drawY = cy - camY;
+                    
+                    if (drawX < -50 || drawX > width + 50 || drawY < -50 || drawY > height + 50) continue;
+
+                    ctx.save();
+                    ctx.translate(drawX, drawY);
+                    
+                    // Simple shadow
+                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.beginPath(); ctx.ellipse(0, 10, 10, 5, 0, 0, Math.PI*2); ctx.fill();
+
+                    // Crow Emoji
+                    ctx.font = '28px sans-serif'; // Bigger
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    if (cx < state.player.x) ctx.scale(-1, 1); // Face inward/outward depending on side
+                    
+                    // Wiggle
+                    const wiggle = Math.sin(state.time * 0.3 + i) * 0.2;
+                    ctx.rotate(wiggle);
+                    
+                    ctx.fillText('🐦‍⬛', 0, 0);
+
+                    // Visual trail
+                    if (!paused && state.time % 4 === 0) {
+                        state.particles.push({
+                            id: `crow-trail-${i}-${state.time}`,
+                            x: cx, y: cy, radius: 2, velocity: {x:0, y:0},
+                            life: 10, maxLife: 10, scale: 0.8, type: 'SMOKE', color: 'rgba(0,0,0,0.2)'
+                        });
+                    }
+                    
+                    ctx.restore();
+                }
+            }
+          });
+
           state.texts.forEach(t => {
               ctx.font = 'bold 14px monospace';
               ctx.fillStyle = t.color;
@@ -646,41 +1347,127 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           });
 
 
-          // Joystick & Mobile Buttons
-          if (touchRef.current.joyId !== null) { /* ... joystick draw ... */ }
-          const sprintBtnRadius = 35; /* ... sprint button draw ... */
+          // UI LAYER
+          // Responsive UI Scaling
+          const isMobile = width < 768;
+          const uiScale = isMobile ? 0.8 : 1.0;
 
-          // --- HUD ---
-          const barWidth = 200;
-          const barHeight = 16;
-          ctx.fillStyle = 'white'; ctx.font = 'bold 20px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+          if (touchRef.current.joyId !== null) {
+              const { joyStartX, joyStartY, joyCurX, joyCurY } = touchRef.current;
+              ctx.save();
+              ctx.globalAlpha = 0.5; // Transparent Joystick
+              ctx.beginPath(); ctx.arc(joyStartX, joyStartY, 50, 0, Math.PI * 2);
+              ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 4; ctx.stroke();
+              ctx.beginPath(); ctx.arc(joyCurX, joyCurY, 20, 0, Math.PI * 2);
+              ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fill();
+              ctx.restore();
+          }
+
+          const bottomOffset = 40;
+          const sprintBtnRadius = 35 * uiScale;
+          const sprintBtnX = width - padding - sprintBtnRadius;
+          const sprintBtnY = height - padding - sprintBtnRadius - bottomOffset;
+          
+          // Sprint Button
+          ctx.beginPath(); ctx.arc(sprintBtnX, sprintBtnY, sprintBtnRadius, 0, Math.PI * 2);
+          ctx.fillStyle = touchRef.current.sprintId !== null ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)'; ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+          ctx.fillStyle = 'white'; ctx.font = `bold ${14 * uiScale}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('RUN', sprintBtnX, sprintBtnY);
+
+          // Ability Button
+          const abilityBtnRadius = 30 * uiScale;
+          const abilityBtnX = sprintBtnX - (90 * uiScale);
+          const abilityBtnY = sprintBtnY + (10 * uiScale);
+          const ability = state.player.activeAbility;
+          
+          const cooldownPct = ability.cooldownTimer / ability.cooldown;
+          
+          ctx.save();
+          ctx.translate(abilityBtnX, abilityBtnY);
+          
+          ctx.beginPath(); ctx.arc(0, 0, abilityBtnRadius, 0, Math.PI * 2);
+          ctx.fillStyle = cooldownPct > 0 ? 'rgba(0,0,0,0.5)' : 'rgba(246, 224, 94, 0.4)'; 
+          if (inputRef.current.ability) ctx.fillStyle = 'rgba(255,255,255,0.6)'; 
+          ctx.fill();
+          ctx.strokeStyle = cooldownPct > 0 ? '#555' : '#F6E05E'; ctx.lineWidth = 3; ctx.stroke();
+
+          ctx.fillStyle = 'white'; ctx.font = `${20 * uiScale}px sans-serif`;
+          ctx.fillText('🌰', 0, 0);
+
+          if (cooldownPct > 0) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, abilityBtnRadius, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * cooldownPct));
+            ctx.lineTo(0, 0);
+            ctx.fill();
+          } else if (ability.activeTimer > 0) {
+            const activePct = ability.activeTimer / ability.duration;
+            ctx.beginPath();
+            ctx.arc(0, 0, abilityBtnRadius + 4, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * activePct));
+            ctx.strokeStyle = '#FFFFFF'; 
+            ctx.lineWidth = 3; 
+            ctx.stroke();
+            
+            if (state.time % 10 < 5) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.fill();
+            }
+          }
+          
+          if (!isMobile) {
+              ctx.font = 'bold 10px sans-serif';
+              ctx.fillStyle = '#ccc';
+              ctx.fillText('SPACE', 0, abilityBtnRadius + 15);
+          }
+
+          ctx.restore();
+
+          // HUD
+          const barWidth = isMobile ? 140 : 200;
+          const barHeight = isMobile ? 12 : 16;
+          
+          ctx.fillStyle = 'white'; ctx.font = `bold ${20 * uiScale}px monospace`; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
           ctx.fillText(`SCORE: ${state.score}`, padding, padding);
-          const hpY = padding + 30;
+          
+          const hpY = padding + (30 * uiScale);
           ctx.fillStyle = '#333'; ctx.fillRect(padding, hpY, barWidth, barHeight); ctx.fillStyle = '#E53E3E';
           const hpRatio = Math.max(0, state.player.hp) / state.player.maxHp; ctx.fillRect(padding, hpY, barWidth * hpRatio, barHeight);
-          ctx.fillStyle = 'white'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillStyle = 'white'; ctx.font = `bold ${10 * uiScale}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
           ctx.fillText(`${Math.ceil(state.player.hp)}/${state.player.maxHp}`, padding + barWidth/2, hpY + barHeight/2);
+          
           const xpY = hpY + barHeight + 8;
-          ctx.fillStyle = '#333'; ctx.fillRect(padding, xpY, barWidth, 8); ctx.fillStyle = '#38B2AC';
-          const xpRatio = state.player.xp / state.player.nextLevelXp; ctx.fillRect(padding, xpY, barWidth * xpRatio, 8);
-          ctx.textAlign = 'left'; ctx.font = 'bold 12px monospace'; ctx.fillStyle = '#38B2AC';
-          ctx.fillText(`LVL ${state.player.level}`, padding, xpY + 14);
-          const stY = xpY + 20;
-          ctx.fillStyle = '#333'; ctx.fillRect(padding, stY, barWidth * 0.7, 6); ctx.fillStyle = '#F6E05E';
-          const stRatio = Math.max(0, state.player.stamina) / state.player.maxStamina; ctx.fillRect(padding, stY, (barWidth * 0.7) * stRatio, 6);
-          ctx.fillStyle = '#F6E05E'; ctx.font = 'bold 10px monospace';
-          ctx.fillText(`STM`, padding + (barWidth * 0.7) + 5, stY + 6);
-          ctx.textAlign = 'center'; ctx.fillStyle = 'white'; ctx.font = 'bold 24px monospace';
+          ctx.fillStyle = '#333'; ctx.fillRect(padding, xpY, barWidth, 8 * uiScale); ctx.fillStyle = '#38B2AC';
+          const xpRatio = state.player.xp / state.player.nextLevelXp; ctx.fillRect(padding, xpY, barWidth * xpRatio, 8 * uiScale);
+          ctx.textAlign = 'left'; ctx.font = `bold ${12 * uiScale}px monospace`; ctx.fillStyle = '#38B2AC';
+          ctx.fillText(`LVL ${state.player.level}`, padding, xpY + (14 * uiScale));
+          
+          const stY = xpY + (20 * uiScale);
+          ctx.fillStyle = '#333'; ctx.fillRect(padding, stY, barWidth * 0.7, 6 * uiScale); ctx.fillStyle = '#F6E05E';
+          const stRatio = Math.max(0, state.player.stamina) / state.player.maxStamina; ctx.fillRect(padding, stY, (barWidth * 0.7) * stRatio, 6 * uiScale);
+          ctx.fillStyle = '#F6E05E'; ctx.font = `bold ${10 * uiScale}px monospace`;
+          ctx.fillText(`STM`, padding + (barWidth * 0.7) + 5, stY + (6 * uiScale));
+          
+          ctx.textAlign = 'center'; ctx.fillStyle = 'white'; ctx.font = `bold ${24 * uiScale}px monospace`;
           const mins = Math.floor(state.time / 3600); const secs = Math.floor((state.time % 3600) / 60);
           ctx.fillText(`${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`, width / 2, padding);
-          const pauseBtnSize = 40; /* ... pause button draw ... */
+          
+          const pauseBtnSize = 40 * uiScale;
+          ctx.fillStyle = 'rgba(255,255,255,0.2)';
+          ctx.beginPath();
+          ctx.roundRect(width - padding - pauseBtnSize, padding, pauseBtnSize, pauseBtnSize, 8);
+          ctx.fill();
+          ctx.fillStyle = 'white';
+          ctx.fillRect(width - padding - pauseBtnSize + (12 * uiScale), padding + (10 * uiScale), 5 * uiScale, 20 * uiScale);
+          ctx.fillRect(width - padding - pauseBtnSize + (23 * uiScale), padding + (10 * uiScale), 5 * uiScale, 20 * uiScale);
 
           requestRef.current = requestAnimationFrame(render);
       };
 
       requestRef.current = requestAnimationFrame(render);
       return () => cancelAnimationFrame(requestRef.current!);
-  }, [paused, soundEnabled, stageDuration, onGameOver, onLevelUp]);
+  }, [paused, soundEnabled, stageDuration, onGameOver, onLevelUp, musicEnabled, onTogglePause]);
 
-  return <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="block bg-gray-900 touch-none" />;
+  return <canvas ref={canvasRef} className="block bg-gray-900 touch-none w-full h-full" />;
 };

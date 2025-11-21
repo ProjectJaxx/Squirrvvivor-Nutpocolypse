@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 const getClient = () => {
@@ -38,5 +39,44 @@ export const generateLore = async (): Promise<string> => {
   } catch (error) {
     console.error("Gemini Error:", error);
     return "The Great Acorn Famine of 2045 changed everything.";
+  }
+};
+
+export const generateCharacterSprite = async (prompt: string): Promise<string | null> => {
+  const ai = getClient();
+  if (!ai) return null;
+
+  try {
+    const fullPrompt = `
+      A pixel art sprite sheet for a game character.
+      Subject: ${prompt}.
+      Style: 32-bit retro pixel art, vibrant colors, clean lines.
+      Layout: A single horizontal strip with exactly 5 frames.
+      Dimensions: 160x32 pixels total (5 frames of 32x32).
+      Frame order:
+      1. Idle/Resting
+      2. Run Step 1
+      3. Run Step 2
+      4. Run Step 3
+      5. Idle/Resting
+      Background: Solid white or black (will be removed by game engine) or transparent.
+      Ensure the character fits within a 32x32 pixel grid per frame.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: fullPrompt,
+    });
+    
+    // Extract image from response
+    for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+            return `data:image/png;base64,${part.inlineData.data}`;
+        }
+    }
+    return null;
+  } catch (error) {
+    console.error("Gemini Image Gen Error:", error);
+    return null;
   }
 };

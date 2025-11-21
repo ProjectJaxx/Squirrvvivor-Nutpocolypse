@@ -38,6 +38,15 @@ export interface SquirrelCharacter {
   filter?: string;
 }
 
+export interface ActiveAbility {
+  type: 'NUT_BARRAGE';
+  name: string;
+  cooldown: number;      // Total cooldown in frames
+  cooldownTimer: number; // Current cooldown remaining
+  duration: number;      // How long the ability lasts (frames)
+  activeTimer: number;   // Time remaining while active
+}
+
 export interface Player extends Entity {
   hp: number;
   maxHp: number;
@@ -45,7 +54,9 @@ export interface Player extends Entity {
   level: number;
   nextLevelXp: number;
   speed: number;
+  magnetRadius: number; // Magnet pickup range
   weapons: Weapon[];
+  activeAbility: ActiveAbility; // New active ability field
   facing: 'LEFT' | 'RIGHT';
   rotation: number;
   characterId?: string;
@@ -56,6 +67,7 @@ export interface Player extends Entity {
   maxStamina: number;
   isSprinting?: boolean;
   invincibleTimer?: number;
+  airborneTimer?: number; // New: Tracks frames player is in the air (launched)
   animationState: 'IDLE' | 'WALKING';
   animationFrame: number;
   frameTimer: number;
@@ -125,6 +137,7 @@ export interface Obstacle extends Entity {
     rotation: number;
     material: 'WOOD' | 'STONE' | 'METAL' | 'CRYSTAL' | 'FLESH';
     isCover?: boolean;
+    subtype?: 'TREE' | 'ROCK' | 'BENCH' | 'CAR' | 'CRYSTAL' | 'WALL' | 'GEYSER' | 'PUDDLE';
     // Distinct properties
     explosive?: boolean;
     explodeDamage?: number;

@@ -1,52 +1,105 @@
 
 export const assets: { [key: string]: HTMLImageElement } = {};
 
-// This object simulates a folder of available image assets.
-// The asset manifest will request files, and we check if they exist here.
-// 'zombie.png' is intentionally missing to demonstrate the emoji fallback system.
-const availableAssets: { [path: string]: string } = {
-  // 128x64px sprite sheet for squirrel (32x32 frames)
-  // Row 0: Idle (4 frames), Row 1: Walking (4 frames)
-  'squirrel.png': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAABACAMAAAAuQVZOAAAAFVBMVEUAAACWbNCAgIBtbW1mZmZVVVWMYdKzAAAAA3RSTlMAgICAgICAtBMAAAAzSURBVHja7cEBDQAAAMKg9U/tDQ8HFAAAAAAAAAAAgH8GAAAAAAAAAACgZwEAAAAAAAAAAIC/BwAAAICfBAAAAAAZbgACtAABYLSd3QAAAABJRU5ErkJggg==',
-};
+const createPlaceholderSprite = (type: 'ZOMBIE' | 'ROBOT' | 'ALIEN', color: string): HTMLImageElement => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; // 4 frames * 32px
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
 
-// This object simulates the "text file" manifest listing all desired assets.
-const assetManifest = {
-  sprites: [
-    { key: "SQUIRREL", path: "squirrel.png" },
-    { key: "ZOMBIE", path: "zombie.png" }
-  ]
+    if (ctx) {
+        for (let i = 0; i < 4; i++) {
+            const xOffset = i * 32;
+            
+            // Bobbing animation for walking frames (1 and 3)
+            const bob = (i === 1 || i === 3) ? 2 : 0;
+            
+            ctx.save();
+            ctx.translate(xOffset, 0);
+
+            if (type === 'ZOMBIE') {
+                ctx.fillStyle = color;
+                // Head
+                ctx.fillRect(10, 2 + bob, 12, 12);
+                // Body
+                ctx.fillRect(8, 14 + bob, 16, 10);
+                // Arms (Outstretched)
+                ctx.fillRect(2, 14 + bob, 6, 4);
+                ctx.fillRect(24, 14 + bob, 6, 4);
+                // Legs
+                ctx.fillRect(10, 24 + bob, 4, 8);
+                ctx.fillRect(18, 24 + bob, 4, 8);
+                
+                // Eyes
+                ctx.fillStyle = '#333';
+                ctx.fillRect(12, 6 + bob, 3, 3);
+                ctx.fillRect(17, 6 + bob, 3, 3);
+            } else if (type === 'ROBOT') {
+                // Head (Square)
+                ctx.fillStyle = '#A0AEC0';
+                ctx.fillRect(8, 2 + bob, 16, 14);
+                // Eye Visor
+                ctx.fillStyle = '#F56565'; 
+                ctx.fillRect(10, 6 + bob, 12, 3);
+                // Body
+                ctx.fillStyle = '#718096';
+                ctx.fillRect(6, 16 + bob, 20, 10);
+                // Legs
+                ctx.fillStyle = '#4A5568';
+                ctx.fillRect(8, 26 + bob, 6, 6);
+                ctx.fillRect(18, 26 + bob, 6, 6);
+                // Antenna
+                ctx.fillStyle = '#CBD5E0';
+                ctx.fillRect(15, 0 + bob, 2, 2);
+            } else if (type === 'ALIEN') {
+                // Head (Oval-ish)
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.ellipse(16, 10 + bob, 8, 10, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Eyes (Large black ovals)
+                ctx.fillStyle = 'black';
+                ctx.beginPath();
+                ctx.ellipse(13, 8 + bob, 3, 5, -0.2, 0, Math.PI * 2);
+                ctx.ellipse(19, 8 + bob, 3, 5, 0.2, 0, Math.PI * 2);
+                ctx.fill();
+                 // Body
+                ctx.fillStyle = color;
+                ctx.fillRect(12, 20 + bob, 8, 6);
+                // Legs
+                ctx.fillRect(12, 26 + bob, 2, 6);
+                ctx.fillRect(18, 26 + bob, 2, 6);
+            }
+
+            ctx.restore();
+        }
+    }
+
+    const img = new Image();
+    img.src = canvas.toDataURL();
+    return img;
 };
 
 export const loadAssets = (): Promise<void> => {
-  const promises: Promise<void>[] = [];
+  // Generate placeholder assets so they are available if the renderer chooses to use them
+  assets['ZOMBIE'] = createPlaceholderSprite('ZOMBIE', '#68d391');
+  assets['ROBOT'] = createPlaceholderSprite('ROBOT', '#a0aec0');
+  assets['ALIEN'] = createPlaceholderSprite('ALIEN', '#D53F8C');
+  
+  return Promise.resolve();
+};
 
-  assetManifest.sprites.forEach(assetInfo => {
-    const base64Data = availableAssets[assetInfo.path];
-    if (base64Data) {
-      // Asset "exists" in our available assets
-      const promise = new Promise<void>((resolve) => {
+export const setPlayerSkin = (base64Data: string): Promise<boolean> => {
+    return new Promise((resolve) => {
         const img = new Image();
-        img.src = base64Data;
         img.onload = () => {
-          assets[assetInfo.key] = img;
-          resolve();
+            assets['PLAYER_SKIN'] = img;
+            resolve(true);
         };
-        img.onerror = (err) => {
-          console.error(`Failed to load asset data for: ${assetInfo.key}`, err);
-          resolve(); // Resolve anyway to not block the app
+        img.onerror = () => {
+            console.error("Failed to load custom skin");
+            resolve(false);
         };
-      });
-      promises.push(promise);
-    } else {
-      console.log(`Asset source not found for "${assetInfo.path}". Game will use emoji fallback for ${assetInfo.key}.`);
-    }
-  });
-
-  return Promise.all(promises).then(() => {
-    console.log("Asset loading process complete.");
-  }).catch(err => {
-    console.error("An unexpected error occurred during asset loading.", err);
-    return Promise.reject(err);
-  });
+        img.src = base64Data;
+    });
 };

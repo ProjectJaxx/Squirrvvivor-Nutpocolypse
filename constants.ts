@@ -78,7 +78,7 @@ export const DEFAULT_WEAPONS: Weapon[] = [
     damage: 15,
     cooldown: 40, // Frames (60fps)
     cooldownTimer: 0,
-    area: 8, // size
+    area: 5, // projectile radius
     speed: 8,
     amount: 1,
   },
@@ -97,7 +97,16 @@ export const INITIAL_PLAYER: Player = {
   level: 1,
   nextLevelXp: 100,
   speed: 4,
+  magnetRadius: 150, // Default magnet range
   weapons: DEFAULT_WEAPONS,
+  activeAbility: {
+    type: 'NUT_BARRAGE',
+    name: 'Nut Barrage',
+    cooldown: 900, // 15 seconds
+    cooldownTimer: 0,
+    duration: 180, // 3 seconds
+    activeTimer: 0
+  },
   facing: 'RIGHT',
   rotation: 0,
   emoji: '🐿️',
@@ -129,16 +138,6 @@ export const INITIAL_GAME_STATE: GameState = {
   shake: { intensity: 0, duration: 0 },
 };
 
-// Upgrades
-export const UPGRADE_POOL_IDS = [
-  'BIGGER_NUTS',
-  'FASTER_THROW',
-  'MULTINUT',
-  'CROW_AURA',
-  'SPEED_BOOTS',
-  'GARLIC_BREAD', // Healing
-];
-
 export const STAGE_CONFIGS: Record<StageDuration, { waveDuration: number }> = {
   STANDARD: {
     waveDuration: 45 // Seconds per wave
@@ -157,8 +156,7 @@ export interface SpriteSheetDefinition {
     frameHeight: number;
     animations: {
         [key: string]: {
-            frames: number;
-            row: number;
+            frames: number[]; // Array of frame indices (0-based)
             speed: number; // frames per animation frame
         };
     };
@@ -166,12 +164,14 @@ export interface SpriteSheetDefinition {
 
 export const SPRITE_DEFS: { [key: string]: SpriteSheetDefinition } = {
     SQUIRREL: {
-        columns: 4,
+        columns: 5, // 5 frames in a horizontal strip
         frameWidth: 32,
         frameHeight: 32,
         animations: {
-            IDLE: { frames: 4, row: 0, speed: 12 },
-            WALKING: { frames: 4, row: 1, speed: 6 },
+            // 1 rest, 2 3 4 run, 5 rest
+            // Indices: 0 (Rest), 1 (Run), 2 (Run), 3 (Run), 4 (Rest)
+            IDLE: { frames: [0, 4], speed: 30 }, // Slowly breathe between start and end pose
+            WALKING: { frames: [1, 2, 3], speed: 6 },
         }
     },
     ZOMBIE: {
@@ -179,7 +179,23 @@ export const SPRITE_DEFS: { [key: string]: SpriteSheetDefinition } = {
         frameWidth: 32,
         frameHeight: 32,
         animations: {
-            WALKING: { frames: 4, row: 0, speed: 10 },
+            WALKING: { frames: [0, 1, 2, 3], speed: 10 },
+        }
+    },
+    ROBOT: {
+        columns: 4,
+        frameWidth: 32,
+        frameHeight: 32,
+        animations: {
+            WALKING: { frames: [0, 1, 2, 3], speed: 10 },
+        }
+    },
+    ALIEN: {
+        columns: 4,
+        frameWidth: 32,
+        frameHeight: 32,
+        animations: {
+            WALKING: { frames: [0, 1, 2, 3], speed: 10 },
         }
     }
 };
