@@ -251,13 +251,19 @@ export interface SpriteSheetDefinition {
 }
 
 // Assuming LPC style sheets (64x64 frames, 13 columns)
-// Row 11 (index 143 start) is usually "Walk Right"
 const LPC_COLS = 13;
-const WALK_RIGHT_ROW_START = 11 * LPC_COLS; 
+
+// Helper to generate frames for a row (skipping first column usually used for idle/stand)
+const lpcFrames = (row: number, count: number = 8) => {
+    const start = row * LPC_COLS + 1;
+    return Array.from({ length: count }, (_, i) => start + i);
+};
+
+const lpcIdle = (row: number) => [row * LPC_COLS];
 
 export const SPRITE_DEFS: { [key: string]: SpriteSheetDefinition } = {
     SQUIRREL: {
-        columns: 5, // 5 frames in a horizontal strip (Standard Squirrel)
+        columns: 5, // 5 frames in a horizontal strip (Generated Custom Skins)
         frameWidth: 32,
         frameHeight: 32,
         animations: {
@@ -265,37 +271,90 @@ export const SPRITE_DEFS: { [key: string]: SpriteSheetDefinition } = {
             WALKING: { frames: [1, 2, 3], speed: 6 },
         }
     },
-    ZOMBIE: {
-        columns: 13, // LPC Layout
+    SQUIRREL_LPC: {
+        columns: 13, // LPC Layout for Built-in Assets
         frameWidth: 64,
         frameHeight: 64,
         animations: {
-            // Use frames 1-8 of the walking row (indices 144-151)
-            WALKING: { frames: [144, 145, 146, 147, 148, 149, 150, 151], speed: 6 },
+            IDLE: { frames: [143], speed: 30 }, 
+            IDLE_UP: { frames: lpcIdle(8), speed: 30 },
+            IDLE_LEFT: { frames: lpcIdle(9), speed: 30 },
+            IDLE_DOWN: { frames: lpcIdle(10), speed: 30 },
+            IDLE_RIGHT: { frames: lpcIdle(11), speed: 30 },
+            WALK_UP: { frames: lpcFrames(8), speed: 6 },
+            WALK_LEFT: { frames: lpcFrames(9), speed: 6 },
+            WALK_DOWN: { frames: lpcFrames(10), speed: 6 },
+            WALK_RIGHT: { frames: lpcFrames(11), speed: 6 },
+            // Fallbacks
+            WALKING: { frames: lpcFrames(11), speed: 6 }, 
+        }
+    },
+    ZOMBIE: {
+        columns: 13, 
+        frameWidth: 64,
+        frameHeight: 64,
+        animations: {
+            IDLE: { frames: [143], speed: 30 },
+            IDLE_UP: { frames: lpcIdle(8), speed: 30 },
+            IDLE_LEFT: { frames: lpcIdle(9), speed: 30 },
+            IDLE_DOWN: { frames: lpcIdle(10), speed: 30 },
+            IDLE_RIGHT: { frames: lpcIdle(11), speed: 30 },
+            WALK_UP: { frames: lpcFrames(8), speed: 6 },
+            WALK_LEFT: { frames: lpcFrames(9), speed: 6 },
+            WALK_DOWN: { frames: lpcFrames(10), speed: 6 },
+            WALK_RIGHT: { frames: lpcFrames(11), speed: 6 },
+            WALKING: { frames: lpcFrames(11), speed: 6 },
         }
     },
     SWARM_ZOMBIE: {
-        columns: 13, // LPC Layout
+        columns: 13,
         frameWidth: 64,
         frameHeight: 64,
         animations: {
-            WALKING: { frames: [144, 145, 146, 147, 148, 149, 150, 151], speed: 6 },
+            IDLE: { frames: [143], speed: 30 },
+            IDLE_UP: { frames: lpcIdle(8), speed: 30 },
+            IDLE_LEFT: { frames: lpcIdle(9), speed: 30 },
+            IDLE_DOWN: { frames: lpcIdle(10), speed: 30 },
+            IDLE_RIGHT: { frames: lpcIdle(11), speed: 30 },
+            WALK_UP: { frames: lpcFrames(8), speed: 6 },
+            WALK_LEFT: { frames: lpcFrames(9), speed: 6 },
+            WALK_DOWN: { frames: lpcFrames(10), speed: 6 },
+            WALK_RIGHT: { frames: lpcFrames(11), speed: 6 },
+            WALKING: { frames: lpcFrames(11), speed: 6 },
         }
     },
     ROBOT: {
-        columns: 13, // LPC Layout
+        columns: 13,
         frameWidth: 64,
         frameHeight: 64,
         animations: {
-            WALKING: { frames: [144, 145, 146, 147, 148, 149, 150, 151], speed: 6 },
+            IDLE: { frames: [143], speed: 30 },
+            IDLE_UP: { frames: lpcIdle(8), speed: 30 },
+            IDLE_LEFT: { frames: lpcIdle(9), speed: 30 },
+            IDLE_DOWN: { frames: lpcIdle(10), speed: 30 },
+            IDLE_RIGHT: { frames: lpcIdle(11), speed: 30 },
+            WALK_UP: { frames: lpcFrames(8), speed: 6 },
+            WALK_LEFT: { frames: lpcFrames(9), speed: 6 },
+            WALK_DOWN: { frames: lpcFrames(10), speed: 6 },
+            WALK_RIGHT: { frames: lpcFrames(11), speed: 6 },
+            WALKING: { frames: lpcFrames(11), speed: 6 },
         }
     },
     ALIEN: {
-        columns: 13, // LPC Layout
+        columns: 13,
         frameWidth: 64,
         frameHeight: 64,
         animations: {
-            WALKING: { frames: [144, 145, 146, 147, 148, 149, 150, 151], speed: 6 },
+            IDLE: { frames: [143], speed: 30 },
+            IDLE_UP: { frames: lpcIdle(8), speed: 30 },
+            IDLE_LEFT: { frames: lpcIdle(9), speed: 30 },
+            IDLE_DOWN: { frames: lpcIdle(10), speed: 30 },
+            IDLE_RIGHT: { frames: lpcIdle(11), speed: 30 },
+            WALK_UP: { frames: lpcFrames(8), speed: 6 },
+            WALK_LEFT: { frames: lpcFrames(9), speed: 6 },
+            WALK_DOWN: { frames: lpcFrames(10), speed: 6 },
+            WALK_RIGHT: { frames: lpcFrames(11), speed: 6 },
+            WALKING: { frames: lpcFrames(11), speed: 6 },
         }
     }
 };

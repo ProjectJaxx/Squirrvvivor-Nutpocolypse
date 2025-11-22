@@ -22,7 +22,6 @@ const shuffle = <T,>(array: T[]): T[] => {
     return newArray;
 };
 
-// Improved UI Layout for Mobile Ergonomics
 const getUILayout = (width: number, height: number) => {
     const isMobile = width < 768;
     const uiScale = isMobile ? 1.2 : 1.0; 
@@ -32,13 +31,10 @@ const getUILayout = (width: number, height: number) => {
 
     const pauseSize = 40 * uiScale;
     
-    // Sprint (Bottom Right - Primary Thumb Action)
     const sprintRadius = isMobile ? 50 : 40;
     const sprintX = width - safeMarginX - sprintRadius;
     const sprintY = height - safeMarginY - sprintRadius;
 
-    // Ability (Left of Sprint - Secondary Action)
-    // Offset specifically to follow natural thumb arc
     const abilityRadius = isMobile ? 40 : 32;
     const abilityX = sprintX - (isMobile ? 120 : 100);
     const abilityY = sprintY + (isMobile ? 15 : 0); 
@@ -47,7 +43,6 @@ const getUILayout = (width: number, height: number) => {
         isMobile,
         uiScale,
         pause: { x: width - safeMarginX - pauseSize, y: 20 + (isMobile ? 10 : 0), w: pauseSize, h: pauseSize },
-        // hitR is larger than visual r to make buttons easier to tap blindly
         sprint: { x: sprintX, y: sprintY, r: sprintRadius, hitR: sprintRadius * 1.6 },
         ability: { x: abilityX, y: abilityY, r: abilityRadius, hitR: abilityRadius * 1.6 }
     };
@@ -68,7 +63,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const inputRef = useRef({ up: false, down: false, left: false, right: false, sprint: false, ability: false });
   const bgPatternRef = useRef<CanvasPattern | null>(null);
 
-  // Input & Touch State
   const touchRef = useRef<{
     joyId: number | null;
     sprintId: number | null;
@@ -99,23 +93,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const tCtx = canvas.getContext('2d');
       if (!tCtx) return null;
 
-      // Base color
       const color = BIOME_CONFIG[biome].bgColor;
       tCtx.fillStyle = color;
       tCtx.fillRect(0, 0, size, size);
 
-      // Add texture
       if (biome === 'PARK') {
-          // Grass Blades
           for (let i = 0; i < 600; i++) {
-              tCtx.fillStyle = Math.random() > 0.5 ? '#276749' : '#38A169'; // Darker/Lighter green
+              tCtx.fillStyle = Math.random() > 0.5 ? '#276749' : '#38A169'; 
               const x = Math.random() * size;
               const y = Math.random() * size;
               const w = 2 + Math.random() * 3;
               const h = 3 + Math.random() * 8;
               tCtx.fillRect(x, y, w, h);
           }
-          // Flowers
           for (let i = 0; i < 15; i++) {
                tCtx.fillStyle = ['#FAF089', '#F687B3', '#63B3ED', '#FFFFFF'][Math.floor(Math.random()*4)];
                tCtx.beginPath();
@@ -123,16 +113,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                tCtx.fill();
           }
       } else if (biome === 'PARKING_LOT') {
-          // Asphalt Noise
           for (let i = 0; i < 1000; i++) {
               tCtx.fillStyle = Math.random() > 0.5 ? '#2D3748' : '#718096';
               tCtx.fillRect(Math.random() * size, Math.random() * size, 2, 2);
           }
-          // Parking lines snippet
           tCtx.fillStyle = 'rgba(255, 255, 255, 0.1)';
           tCtx.fillRect(0, 100, size, 10);
       } else if (biome === 'MARS') {
-          // Craters/Rocks
           for (let i = 0; i < 300; i++) {
               tCtx.fillStyle = Math.random() > 0.5 ? '#9B2C2C' : '#822727';
               const r = Math.random() * 4;
@@ -154,7 +141,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           const localX = dx * cos - dy * sin;
           const localY = dx * sin + dy * cos;
 
-          // Expand rectangle by padding
           const halfW = (obs.width / 2) + padding;
           const halfH = (obs.height / 2) + padding;
 
@@ -164,7 +150,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           const distLocalX = localX - closestX;
           const distLocalY = localY - closestY;
           
-          // Strict check: is the distance from the (possibly expanded) rectangle < entityRadius?
           return (distLocalX * distLocalX + distLocalY * distLocalY) < (entityRadius * entityRadius);
       } else {
           const dist = Math.hypot(entityX - obs.x, entityY - obs.y);
@@ -172,7 +157,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
   };
 
-  // Handle Resize and Init
   useEffect(() => {
     const updateSize = () => {
         if (canvasRef.current) {
@@ -194,18 +178,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     state.player.emoji = character.emoji;
     state.player.radius = character.radius;
     state.player.filter = character.filter;
-    // Initialize upgraded stats if provided by character prop (from App.tsx calculation)
     if (character.magnetRadius) state.player.magnetRadius = character.magnetRadius;
     if (character.maxCompanions) state.player.maxCompanions = character.maxCompanions;
     
     state.player.airborneTimer = 0;
     
-    // Load Active Ability from Character definition
     state.player.activeAbility = character.activeAbility 
       ? JSON.parse(JSON.stringify(character.activeAbility)) 
       : { ...INITIAL_GAME_STATE.player.activeAbility };
     
-    // Initialize Companions (Scurry Upgrade)
     if (state.player.maxCompanions && state.player.maxCompanions > 0) {
         for (let i = 0; i < state.player.maxCompanions; i++) {
             state.companions.push({
@@ -214,9 +195,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 y: state.player.y,
                 radius: 10,
                 type: 'COMPANION',
-                color: '#F6E05E', // Yellowish
+                color: '#F6E05E',
                 offsetAngle: (Math.PI * 2 / state.player.maxCompanions) * i,
-                cooldown: 60, // Shoot every 1s
+                cooldown: 60,
                 cooldownTimer: Math.random() * 60
             });
         }
@@ -234,7 +215,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     state.obstacles = [];
     const { minX, maxX, minY, maxY } = state.mapBounds;
     
-    // Initialize Background Pattern
     if (canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d');
         if (ctx) {
@@ -243,7 +223,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     }
 
     for(let i=0; i<biomeData.obstacleCount; i++) {
-        const x = randomRange(minX + 50, maxX - 50); // Keep obstacles away from fence slightly
+        const x = randomRange(minX + 50, maxX - 50); 
         const y = randomRange(minY + 50, maxY - 50);
         const id = `obs-${i}`;
         let obs: Obstacle = {
@@ -345,32 +325,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const tx = t.clientX;
             const ty = t.clientY;
             
-            // Priority 1: Pause (Top Right)
             if (tx >= layout.pause.x && tx <= layout.pause.x + layout.pause.w &&
                 ty >= layout.pause.y && ty <= layout.pause.y + layout.pause.h) {
                 onTogglePause();
                 continue;
             }
 
-            // Priority 2: Action Buttons (Sprint & Ability)
-            
-            // Check Ability First (Secondary action, usually harder to hit)
             const distAbility = Math.hypot(tx - layout.ability.x, ty - layout.ability.y);
             if (distAbility < layout.ability.hitR) {
                 touchRef.current.abilityId = t.identifier;
-                inputRef.current.ability = true; // Hold to activate
+                inputRef.current.ability = true; 
                 continue;
             }
 
-            // Check Sprint
             const distSprint = Math.hypot(tx - layout.sprint.x, ty - layout.sprint.y);
             if (distSprint < layout.sprint.hitR) {
                 touchRef.current.sprintId = t.identifier;
                 continue;
             }
 
-            // Priority 3: Joystick (Left Half of Screen)
-            // Only if no other buttons were touched
             if (touchRef.current.joyId === null && tx < width * 0.6) {
                 touchRef.current.joyId = t.identifier;
                 touchRef.current.joyStartX = tx;
@@ -404,7 +377,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             }
             if (t.identifier === touchRef.current.abilityId) {
                 touchRef.current.abilityId = null;
-                inputRef.current.ability = false; // Release ability
+                inputRef.current.ability = false; 
             }
         }
       };
@@ -440,10 +413,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               const state = stateRef.current;
               state.time++;
 
-              // Check Win Condition
               if (state.time >= GAME_WIN_TIME) {
                   onGameOver(state.score, state.time, state.kills, state.collectedNuts, true);
-                  return; // Stop frame
+                  return;
               }
 
               const p = state.player;
@@ -471,8 +443,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               if (inputRef.current.right) dx += 1;
 
               if (touchRef.current.joyId !== null) {
-                  const maxDist = 75; // Increased sensitivity range for better analog feel
-                  const deadZone = 10; // Prevent drift
+                  const maxDist = 75; 
+                  const deadZone = 10; 
                   const jx = touchRef.current.joyCurX - touchRef.current.joyStartX;
                   const jy = touchRef.current.joyCurY - touchRef.current.joyStartY;
                   const dist = Math.hypot(jx, jy);
@@ -486,12 +458,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               
               const isMoving = dx !== 0 || dy !== 0;
 
-              p.animationState = isMoving ? 'WALKING' : 'IDLE';
-              const animDef = SPRITE_DEFS.SQUIRREL.animations[p.animationState];
-              p.frameTimer = (p.frameTimer + 1) % animDef.speed;
-              if (p.frameTimer === 0) {
-                  p.animationFrame = (p.animationFrame + 1) % animDef.frames.length;
+              // Update Facing Direction (4-way)
+              if (isMoving) {
+                  if (Math.abs(dx) > Math.abs(dy)) {
+                      p.facing = dx > 0 ? 'RIGHT' : 'LEFT';
+                  } else {
+                      p.facing = dy > 0 ? 'DOWN' : 'UP';
+                  }
               }
+
+              p.animationState = isMoving ? 'WALKING' : 'IDLE';
+              // Logic for frame update is now handled inside drawEntity for correct direction lookups
+              p.frameTimer++;
 
               let currentSpeed = p.speed;
               const wantsToSprint = inputRef.current.sprint || touchRef.current.sprintId !== null;
@@ -545,36 +523,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
                   if (canMoveX) p.x += dx * currentSpeed;
                   if (canMoveY) p.y += dy * currentSpeed;
-                  
-                  p.facing = dx < 0 ? 'LEFT' : dx > 0 ? 'RIGHT' : p.facing;
               }
 
-              // --- COMPANION LOGIC (Scurry Upgrade) ---
+              // --- COMPANION LOGIC ---
               state.companions.forEach((comp, index) => {
                    const angleOffset = (state.time * 0.01) + comp.offsetAngle; 
                    const formationRadius = 45; 
                    const targetX = p.x + Math.cos(angleOffset) * formationRadius;
                    const targetY = p.y + Math.sin(angleOffset) * formationRadius;
-                   
-                   // Smooth follow
                    comp.x += (targetX - comp.x) * 0.1;
                    comp.y += (targetY - comp.y) * 0.1;
 
-                   // Shooting Logic
                    if (comp.cooldownTimer > 0) comp.cooldownTimer--;
                    else {
                         if (state.enemies.length > 0) {
-                            // Find random enemy or closest? Random for chaos
                             const target = state.enemies[Math.floor(Math.random() * state.enemies.length)];
                             const dist = Math.hypot(target.x - comp.x, target.y - comp.y);
                             if (dist < 350) {
                                 comp.cooldownTimer = comp.cooldown;
                                 const angle = Math.atan2(target.y - comp.y, target.x - comp.x);
-                                
-                                // "Various sized nutlets"
                                 const nutSize = randomRange(2, 6);
                                 const dmgMult = nutSize / 3;
-                                
                                 state.projectiles.push({
                                     id: `c-nut-${state.time}-${Math.random()}`, x: comp.x, y: comp.y, 
                                     radius: nutSize, type: 'NUT_SHELL', color: '#FAF089',
@@ -599,7 +568,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       }
                       if (ability.type === 'NUT_BARRAGE') {
                           if (state.time % 3 === 0) { 
-                              const baseAngle = p.facing === 'RIGHT' ? 0 : Math.PI;
+                              const baseAngle = p.facing === 'RIGHT' ? 0 : p.facing === 'LEFT' ? Math.PI : p.facing === 'UP' ? -Math.PI/2 : Math.PI/2;
                               const spread = randomRange(-0.4, 0.4);
                               const angle = baseAngle + spread;
                               state.projectiles.push({
@@ -615,7 +584,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   } else if (ability.cooldownTimer > 0) {
                       ability.cooldownTimer--;
                   } else if (inputRef.current.ability) {
-                      // Auto-activate when held if off cooldown
                       ability.activeTimer = ability.duration;
                       ability.cooldownTimer = ability.cooldown;
                       if (soundEnabled) playSound('LEVELUP'); 
@@ -662,30 +630,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               state.wave = currentWave;
               
               if (state.time % 60 === 0 && state.enemies.length < 50 + (currentWave * 5)) {
-                  // New Stealth Spawn Logic
                   const viewW = ctx.canvas.width;
                   const viewH = ctx.canvas.height;
                   const diagonal = Math.hypot(viewW, viewH);
-                  const spawnRadius = (diagonal / 2) + 100; // Just outside corners
+                  const spawnRadius = (diagonal / 2) + 100; 
 
                   for(let attempt=0; attempt<10; attempt++) {
                       const angle = Math.random() * Math.PI * 2;
                       const spawnX = p.x + Math.cos(angle) * spawnRadius;
                       const spawnY = p.y + Math.sin(angle) * spawnRadius;
 
-                      // Check if inside Map Bounds (Fence)
                       const b = state.mapBounds;
                       if (spawnX >= b.minX + 20 && spawnX <= b.maxX - 20 &&
                           spawnY >= b.minY + 20 && spawnY <= b.maxY - 20) {
                           
-                          // Valid Spawn
                           let enemyType = 'ZOMBIE';
                           let enemyHp = 20 + (currentWave * 5);
                           let enemySpeed = 1 + (Math.random() * 1);
-                          let enemyRadius = 12;
+                          let enemyRadius = 16; 
                           let enemyColor = COLORS.zombie;
 
-                          // Spawn logic based on biome and wave
                           if (state.biome === 'PARKING_LOT' && currentWave >= 3) {
                               if (Math.random() > 0.8) enemyType = 'ROBOT';
                           } else if (state.biome === 'MARS' && currentWave >= 2) {
@@ -696,17 +660,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                               enemyHp = 40 + (currentWave * 8);
                               enemySpeed = 0.8 + (Math.random() * 0.4);
                               enemyColor = COLORS.robot;
-                              enemyRadius = 14;
+                              enemyRadius = 18;
                           } else if (enemyType === 'ALIEN') {
                               enemyHp = 30 + (currentWave * 6);
                               enemySpeed = 2.0 + (Math.random() * 0.5);
                               enemyColor = COLORS.alien;
-                              enemyRadius = 10;
+                              enemyRadius = 14; 
                           } else if (currentWave >= 2 && Math.random() > 0.7) {
                               enemyType = 'SWARM_ZOMBIE';
                               enemyHp = 15 + (currentWave * 2); 
                               enemySpeed = 2.5 + (Math.random() * 0.5); 
-                              enemyRadius = 10; 
+                              enemyRadius = 12; 
                               enemyColor = '#9AE6B4'; 
                           }
 
@@ -715,7 +679,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                               radius: enemyRadius, type: enemyType as any, color: enemyColor, 
                               hp: enemyHp, maxHp: enemyHp,
                               speed: enemySpeed, damage: 5, knockback: {x:0, y:0}, statusEffects: [],
-                              animationState: 'WALKING', animationFrame: 0, frameTimer: 0
+                              animationState: 'WALKING', animationFrame: 0, frameTimer: 0,
+                              facing: 'DOWN'
                           });
                           break; 
                       }
@@ -805,6 +770,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       const finalLen = Math.hypot(finalDx, finalDy) || 1;
                       e.x += (finalDx / finalLen) * e.speed * speedMod;
                       e.y += (finalDy / finalLen) * e.speed * speedMod;
+                      
+                      // Update facing
+                      if (Math.abs(finalDx) > Math.abs(finalDy)) e.facing = finalDx > 0 ? 'RIGHT' : 'LEFT';
+                      else e.facing = finalDy > 0 ? 'DOWN' : 'UP';
 
                   } else {
                       const distToPlayer = Math.hypot(dx, dy);
@@ -817,16 +786,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       const angle = Math.atan2(finalDy, finalDx);
                       e.x += Math.cos(angle) * e.speed * speedMod;
                       e.y += Math.sin(angle) * e.speed * speedMod;
+
+                      // Update facing
+                      if (Math.abs(Math.cos(angle)) > Math.abs(Math.sin(angle))) e.facing = Math.cos(angle) > 0 ? 'RIGHT' : 'LEFT';
+                      else e.facing = Math.sin(angle) > 0 ? 'DOWN' : 'UP';
                   }
                   
-                  const animDef = SPRITE_DEFS[e.type] || SPRITE_DEFS.ZOMBIE;
-                  // Fallback to walking animation if current state missing
-                  const anim = animDef.animations[e.animationState] || animDef.animations['WALKING'];
-                  
-                  e.frameTimer = (e.frameTimer + 1) % anim.speed;
-                  if (e.frameTimer === 0) {
-                      e.animationFrame = (e.animationFrame + 1) % anim.frames.length;
-                  }
+                  e.frameTimer++;
 
                   if ((!p.invincibleTimer || p.invincibleTimer <= 0) && !p.airborneTimer) {
                       const hitDist = p.radius + e.radius - 4; 
@@ -865,7 +831,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                           : null;
                       
                       w.cooldownTimer = w.cooldown;
-                      const baseAngle = target ? Math.atan2(target.y - p.y, target.x - p.x) : (p.facing === 'RIGHT' ? 0 : Math.PI);
+                      // Default fire direction based on facing
+                      let baseAngle = p.facing === 'RIGHT' ? 0 : p.facing === 'LEFT' ? Math.PI : p.facing === 'UP' ? -Math.PI/2 : Math.PI/2;
+                      if (target) baseAngle = Math.atan2(target.y - p.y, target.x - p.x);
                       
                       const spread = 0.2; 
                       const totalSpread = spread * (w.amount - 1);
@@ -1071,7 +1039,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       state.kills++;
                       state.score += 10;
                       const xpValue = 15 + (state.wave - 1) * 2;
-                      state.drops.push({ id: `drop-${Math.random()}`, x: e.x, y: e.y, radius: 4, type: 'DROP', kind: 'XP', value: xpValue, color: '#4FD1C5'});
+                      state.drops.push({ id: `drop-${Math.random()}`, x: e.x, y: e.y, radius: 12, type: 'DROP', kind: 'XP', value: xpValue, color: '#F6E05E'});
                       state.enemies.splice(i, 1);
                       if (soundEnabled) playSound('DEATH');
                   }
@@ -1141,7 +1109,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                   maxLife: 15, 
                                   scale: 1, 
                                   type: 'SPARK', 
-                                  color: '#4FD1C5'
+                                  color: '#F6E05E' 
                               });
                           }
 
@@ -1174,7 +1142,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
           const state = stateRef.current;
           
-          // DRAW BACKGROUND PATTERN
+          // DRAW
           let camX = state.player.x - width / 2;
           let camY = state.player.y - height / 2;
 
@@ -1188,7 +1156,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               const matrix = new DOMMatrix();
               matrix.translateSelf(-camX, -camY);
               bgPatternRef.current.setTransform(matrix);
-              
               ctx.fillStyle = bgPatternRef.current;
               ctx.fillRect(0, 0, width, height);
               ctx.restore();
@@ -1199,7 +1166,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
           ctx.imageSmoothingEnabled = false; 
 
-          // DRAW GRID
           ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.lineWidth = 1;
           const gridSize = 100;
           const startX = Math.floor(camX / gridSize) * gridSize;
@@ -1207,7 +1173,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           for(let x = startX; x < camX + width; x += gridSize) { ctx.beginPath(); ctx.moveTo(x - camX, 0); ctx.lineTo(x - camX, height); ctx.stroke(); }
           for(let y = startY; y < camY + height; y += gridSize) { ctx.beginPath(); ctx.moveTo(0, y - camY); ctx.lineTo(width, y - camY); ctx.stroke(); }
 
-          // DRAW FENCE
           const bounds = state.mapBounds;
           const fenceSize = 40;
           ctx.font = `${fenceSize}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1320,26 +1285,80 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              switch (e.type) {
                 case 'PLAYER': {
                     const p = e as Player;
-                    const sheet = assets.PLAYER_SKIN;
-                    const def = SPRITE_DEFS.SQUIRREL;
-                    const scaleFactor = (p.radius * 2.4) / def.frameWidth; 
+                    const customSkin = assets.PLAYER_SKIN;
+                    const charSkin = p.characterId && assets[p.characterId] ? assets[p.characterId] : null;
+                    const activeSheet = customSkin || charSkin;
 
-                    if (sheet) {
-                      const anim = def.animations[p.animationState];
-                      const safeFrameIndex = p.animationFrame % anim.frames.length;
-                      const actualFrameIndex = anim.frames[safeFrameIndex];
+                    let def = SPRITE_DEFS.SQUIRREL; 
+                    let drawRowOffset = 0;
+
+                    if (!customSkin && charSkin) {
+                         if (charSkin.height < 100) {
+                             def = { ...SPRITE_DEFS.ZOMBIE, frameHeight: charSkin.height };
+                             drawRowOffset = -11; 
+                         } else if (charSkin.height < 600) {
+                             def = SPRITE_DEFS.ZOMBIE;
+                             drawRowOffset = -9; 
+                         } else {
+                             def = SPRITE_DEFS.SQUIRREL_LPC || SPRITE_DEFS.ZOMBIE;
+                             drawRowOffset = 0;
+                         }
+                    }
+
+                    if (activeSheet && activeSheet.width > 0) {
+                      let animKey: string = p.animationState;
+                      
+                      // Use directional animations if using built-in LPC
+                      if (!customSkin && charSkin && charSkin.height >= 600) {
+                          if (animKey === 'WALKING') {
+                              animKey = `WALK_${p.facing}`;
+                          } else if (animKey === 'IDLE') {
+                              // Use directional idle if available
+                              animKey = `IDLE_${p.facing}`;
+                          }
+                      }
+
+                      let anim = def.animations[animKey];
+                      // Fallbacks
+                      if (!anim && animKey.startsWith('WALK')) anim = def.animations['WALKING'];
+                      if (!anim && animKey.startsWith('IDLE')) anim = def.animations['IDLE'];
+                      if (!anim) anim = def.animations['WALKING'] || { frames: [0], speed: 1 };
+
+                      const frameList = anim?.frames || [0];
+                      const safeFrameIndex = Math.floor(p.frameTimer / anim.speed) % frameList.length;
+                      const actualFrameIndex = frameList[safeFrameIndex];
                       
                       const col = actualFrameIndex % def.columns;
-                      const row = Math.floor(actualFrameIndex / def.columns);
+                      let row = Math.floor(actualFrameIndex / def.columns);
+
+                      if (drawRowOffset === -11) row = 0; 
+                      else if (drawRowOffset === -9) row = 2;
+                      
                       const sx = col * def.frameWidth;
                       const sy = row * def.frameHeight;
 
+                      const scaleFactor = (p.radius * 2.4) / (def.frameWidth > 32 ? 32 : def.frameWidth);
+
                       ctx.save();
-                      if (p.facing === 'LEFT') ctx.scale(-1, 1);
+                      
+                      // Fallback flip for single strips (custom skins) or missing directions
+                      if ((customSkin || drawRowOffset !== 0) && p.facing === 'LEFT') ctx.scale(-1, 1);
+                      
                       if (p.airborneTimer && p.airborneTimer > 0) ctx.scale(1.2, 1.2);
-                      const drawW = def.frameWidth * scaleFactor;
-                      const drawH = def.frameHeight * scaleFactor;
-                      ctx.drawImage(sheet, sx, sy, def.frameWidth, def.frameHeight, -drawW / 2, -drawH / 2, drawW, drawH);
+                      
+                      if (def.frameWidth > 32) {
+                          const drawSize = p.radius * 4.0;
+                          const offset = drawSize / 2;
+                          if (sy + def.frameHeight <= activeSheet.height) {
+                              ctx.drawImage(activeSheet, sx, sy, def.frameWidth, def.frameHeight, -offset, -offset - (p.radius * 0.5), drawSize, drawSize);
+                          } else {
+                              ctx.drawImage(activeSheet, sx, 0, def.frameWidth, def.frameHeight, -offset, -offset - (p.radius * 0.5), drawSize, drawSize);
+                          }
+                      } else {
+                          const drawW = def.frameWidth * scaleFactor;
+                          const drawH = def.frameHeight * scaleFactor;
+                          ctx.drawImage(activeSheet, sx, sy, def.frameWidth, def.frameHeight, -drawW / 2, -drawH / 2, drawW, drawH);
+                      }
                       ctx.restore();
                     } else {
                         const bounce = p.animationState === 'WALKING' ? Math.abs(Math.sin(state.time * 0.3)) * 4 : 0;
@@ -1352,20 +1371,46 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     break;
                 }
                 case 'COMPANION': {
-                    const sheet = assets.PLAYER_SKIN;
-                    const def = SPRITE_DEFS.SQUIRREL;
-                    if (sheet) {
-                         const frameIndex = Math.floor(state.time / 5) % 2 + 1; 
-                         const col = frameIndex % def.columns;
-                         const row = Math.floor(frameIndex / def.columns);
+                    const sheet = assets.PLAYER_SKIN || assets['GREY'];
+                    let def = SPRITE_DEFS.SQUIRREL;
+                    let drawRowOffset = 0;
+                    if (!assets.PLAYER_SKIN && assets['GREY']) {
+                         const h = assets['GREY'].height;
+                         if (h < 100) { def = { ...SPRITE_DEFS.ZOMBIE, frameHeight: h }; drawRowOffset = -11; }
+                         else if (h < 600) { def = SPRITE_DEFS.ZOMBIE; drawRowOffset = -9; }
+                         else { def = SPRITE_DEFS.SQUIRREL_LPC || SPRITE_DEFS.ZOMBIE; }
+                    }
+
+                    if (sheet && sheet.width > 0) {
+                         // Companions just walk right or mirror left
+                         const anim = def.animations['WALKING'];
+                         const frameList = anim?.frames || [0];
+                         const frameIndex = Math.floor(state.time / 5) % frameList.length;
+                         const actualFrameIndex = frameList[frameIndex];
+                         
+                         const col = actualFrameIndex % def.columns;
+                         let row = Math.floor(actualFrameIndex / def.columns);
+                         if (drawRowOffset === -11) row = 0;
+                         else if (drawRowOffset === -9) row = 2;
                          const sx = col * def.frameWidth;
                          const sy = row * def.frameHeight;
-                         const scaleFactor = (e.radius * 2.4) / def.frameWidth;
-                         const drawW = def.frameWidth * scaleFactor;
-                         const drawH = def.frameHeight * scaleFactor;
+                         const scaleFactor = (e.radius * 2.4) / (def.frameWidth > 32 ? 32 : def.frameWidth);
+                         
                          ctx.save();
                          if (state.player.x < e.x) ctx.scale(-1, 1);
-                         ctx.drawImage(sheet, sx, sy, def.frameWidth, def.frameHeight, -drawW / 2, -drawH / 2, drawW, drawH);
+                         if (def.frameWidth > 32) {
+                             const drawSize = e.radius * 4.0;
+                             const offset = drawSize / 2;
+                             if (sy + def.frameHeight <= sheet.height) {
+                                 ctx.drawImage(sheet, sx, sy, def.frameWidth, def.frameHeight, -offset, -offset - (e.radius * 0.5), drawSize, drawSize);
+                             } else {
+                                 ctx.drawImage(sheet, sx, 0, def.frameWidth, def.frameHeight, -offset, -offset - (e.radius * 0.5), drawSize, drawSize);
+                             }
+                         } else {
+                             const drawW = def.frameWidth * scaleFactor;
+                             const drawH = def.frameHeight * scaleFactor;
+                             ctx.drawImage(sheet, sx, sy, def.frameWidth, def.frameHeight, -drawW / 2, -drawH / 2, drawW, drawH);
+                         }
                          ctx.restore();
                     } else {
                         const bounce = Math.abs(Math.sin(state.time * 0.3 + parseFloat(e.id.split('-')[1]))) * 3;
@@ -1382,13 +1427,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 case 'ALIEN': {
                     const enemy = e as Enemy;
                     const def = SPRITE_DEFS[enemy.type] || SPRITE_DEFS['ZOMBIE'];
-                    // Fallback to Zombie asset if specific type is missing to prevent invisible enemies
                     const sheet = assets[enemy.type] || assets['ZOMBIE'];
                     
-                    if (sheet && SPRITE_DEFS[enemy.type]) {
-                        const anim = def.animations[enemy.animationState] || def.animations['WALKING'];
-                        const safeFrameIndex = enemy.animationFrame % anim.frames.length;
-                        const actualFrameIndex = anim.frames[safeFrameIndex];
+                    if (sheet && sheet.width > 0 && SPRITE_DEFS[enemy.type]) {
+                        // Use 4-direction if available (default enemies are now LPC-ish)
+                        let animKey: string = 'WALKING';
+                        if (enemy.animationState === 'WALKING' && enemy.facing) {
+                            animKey = `WALK_${enemy.facing}`;
+                        } else if (enemy.animationState === 'IDLE' && enemy.facing) {
+                            // Enemies rarely idle, but if they did...
+                            animKey = `IDLE_${enemy.facing}`;
+                        }
+
+                        let anim = def.animations[animKey] || def.animations['WALKING'];
+                        // Fallbacks
+                        if (!anim && animKey.startsWith('WALK')) anim = def.animations['WALKING'];
+                        if (!anim && animKey.startsWith('IDLE')) anim = def.animations['IDLE'];
+                        
+                        const frameList = anim?.frames || [0];
+                        const safeFrameIndex = Math.floor(enemy.frameTimer / anim.speed) % frameList.length;
+                        const actualFrameIndex = frameList[safeFrameIndex];
                         
                         const col = actualFrameIndex % def.columns;
                         const row = Math.floor(actualFrameIndex / def.columns);
@@ -1396,13 +1454,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         const sy = row * def.frameHeight;
 
                         ctx.save();
-                        if (enemy.x < state.player.x) ctx.scale(-1, 1);
+                        // Do NOT flip if we have explicit direction (unless falling back to simple strip)
+                        // If we fell back to 'WALKING' which is usually RIGHT, and we are facing LEFT, flip.
+                        if (animKey === 'WALKING' && enemy.facing === 'LEFT') ctx.scale(-1, 1);
                         
-                        // Calculate draw size to match hit radius, but allow for some sprite overflow
-                        const drawSize = enemy.radius * 2.8; 
+                        const drawSize = enemy.radius * 4.0; 
                         const offset = drawSize / 2;
                         
-                        ctx.drawImage(sheet, sx, sy, def.frameWidth, def.frameHeight, -offset, -offset, drawSize, drawSize);
+                        ctx.drawImage(sheet, sx, sy, def.frameWidth, def.frameHeight, -offset, -offset - (enemy.radius * 0.5), drawSize, drawSize);
                         ctx.restore();
                     } else {
                         const bounce = enemy.animationState === 'WALKING' ? Math.abs(Math.sin(state.time * 0.2 + parseFloat(enemy.id.split('-')[2] || '0'))) * 3 : 0;
@@ -1437,7 +1496,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                         ctx.fillStyle = hpPct > 0.5 ? '#48BB78' : '#F56565'; ctx.fillRect(-w/2, -obs.radius - 10, w * hpPct, h);
                     }
                     break;
-                case 'DROP': drawEmoji('💎', 1.5, Math.sin(state.time * 0.1) * 0.2); break;
+                case 'DROP': 
+                    ctx.shadowColor = '#ECC94B'; 
+                    ctx.shadowBlur = 15;
+                    drawEmoji('🥜', 2.5, Math.sin(state.time * 0.1) * 0.2); 
+                    ctx.shadowBlur = 0; 
+                    break;
                 default: ctx.beginPath(); ctx.arc(0, 0, e.radius, 0, Math.PI * 2); ctx.fill(); break;
              }
              ctx.restore();
@@ -1483,17 +1547,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               ctx.strokeText(t.text, t.x - camX, t.y - camY); ctx.fillText(t.text, t.x - camX, t.y - camY);
           });
 
-
-          // --- UI LAYER ---
-          // Use centralized layout for rendering
-          
-          // Draw Joystick
           if (touchRef.current.joyId !== null) {
               const { joyStartX, joyStartY, joyCurX, joyCurY } = touchRef.current;
               ctx.save();
               ctx.globalAlpha = 0.6;
               
-              // Joystick Base
               ctx.beginPath(); ctx.arc(joyStartX, joyStartY, 60 * layout.uiScale, 0, Math.PI * 2);
               const grad = ctx.createRadialGradient(joyStartX, joyStartY, 10, joyStartX, joyStartY, 60 * layout.uiScale);
               grad.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
@@ -1501,14 +1559,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               ctx.fillStyle = grad; ctx.fill();
               ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.stroke();
               
-              // Joystick Knob
               ctx.beginPath(); ctx.arc(joyCurX, joyCurY, 30 * layout.uiScale, 0, Math.PI * 2);
               ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'; ctx.fill();
               ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 5;
               ctx.restore();
           }
 
-          // Draw Sprint Button
           const sprintBtn = layout.sprint;
           const isSprinting = touchRef.current.sprintId !== null;
           ctx.save();
@@ -1523,7 +1579,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.fillText('RUN', 0, 0);
           ctx.restore();
 
-          // Draw Ability Button
           const abilityBtn = layout.ability;
           const ability = state.player.activeAbility;
           if (ability) {
@@ -1532,7 +1587,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               
               ctx.save();
               ctx.translate(abilityBtn.x, abilityBtn.y);
-              // Press effect: Shrink slightly
               if (isPressed) ctx.scale(0.9, 0.9);
               
               ctx.beginPath(); ctx.arc(0, 0, abilityBtn.r, 0, Math.PI * 2);
@@ -1560,7 +1614,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'; ctx.fill();
                 }
               }
-              
               if (!layout.isMobile) {
                   ctx.font = 'bold 10px sans-serif';
                   ctx.fillStyle = '#ccc';
@@ -1569,7 +1622,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               ctx.restore();
           }
 
-          // Draw Pause Button
           const pauseBtn = layout.pause;
           ctx.fillStyle = 'rgba(255,255,255,0.2)';
           ctx.beginPath();
@@ -1578,15 +1630,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.fillStyle = 'white';
           const barW = 5 * layout.uiScale;
           const barH = 18 * layout.uiScale;
-          // Center bars in button
           const barOffsetX = (pauseBtn.w - (barW * 2 + 6)) / 2;
           const barOffsetY = (pauseBtn.h - barH) / 2;
-          
           ctx.fillRect(pauseBtn.x + barOffsetX, pauseBtn.y + barOffsetY, barW, barH);
           ctx.fillRect(pauseBtn.x + barOffsetX + barW + 6, pauseBtn.y + barOffsetY, barW, barH);
 
-
-          // HUD
           const padding = 20;
           const barWidth = layout.isMobile ? 140 : 200;
           const barHeight = layout.isMobile ? 12 : 16;
@@ -1612,7 +1660,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.fillStyle = '#F6E05E'; ctx.font = `bold ${10 * layout.uiScale}px monospace`;
           ctx.fillText(`STM`, padding + (barWidth * 0.7) + 5, stY + (6 * layout.uiScale));
           
-          // Time & Nuts
           ctx.textAlign = 'center'; ctx.fillStyle = 'white'; ctx.font = `bold ${24 * layout.uiScale}px monospace`;
           const remainingFrames = Math.max(0, GAME_WIN_TIME - state.time);
           const mins = Math.floor(remainingFrames / 3600); const secs = Math.floor((remainingFrames % 3600) / 60);

@@ -1,4 +1,5 @@
 
+
 export type AppState = 'LOADING' | 'MENU' | 'GAME' | 'LEVEL_UP' | 'GAME_OVER' | 'SETTINGS' | 'SAVE_SELECT' | 'PAUSED' | 'BASE_UPGRADES';
 
 export interface Vector {
@@ -68,7 +69,7 @@ export interface Player extends Entity {
   magnetRadius: number; // Magnet pickup range
   weapons: Weapon[];
   activeAbility: ActiveAbility; // New active ability field
-  facing: 'LEFT' | 'RIGHT';
+  facing: 'LEFT' | 'RIGHT' | 'UP' | 'DOWN';
   rotation: number;
   characterId?: string;
   filter?: string;
@@ -102,7 +103,8 @@ export interface Enemy extends Entity {
   shieldHp?: number;
   maxShieldHp?: number;
   hitFlashTimer?: number;
-  animationState: 'WALKING';
+  facing: 'LEFT' | 'RIGHT' | 'UP' | 'DOWN';
+  animationState: 'WALKING' | 'IDLE';
   animationFrame: number;
   frameTimer: number;
 }

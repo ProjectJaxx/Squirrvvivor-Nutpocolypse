@@ -13,61 +13,151 @@ const createPlaceholderSprite = (type: 'ZOMBIE' | 'ROBOT' | 'ALIEN', color: stri
     canvas.height = ROWS * TILE; 
     const ctx = canvas.getContext('2d');
 
-    if (ctx) {
-        // We need to populate Row 11 (Walk Right) for the game's configuration
-        // Row 11 index = 11. Y = 11 * 64 = 704.
-        // The game uses frames 144-151, which correspond to Row 11, Cols 1-8.
-        const rowY = 11 * TILE;
+    if (!ctx) return new Image();
 
-        for (let col = 1; col <= 8; col++) {
-            const x = col * TILE;
-            const y = rowY;
-            const centerX = x + 32;
-            const centerY = y + 32;
+    // Helper to draw a frame
+    const drawFrame = (col: number, row: number, direction: 'UP' | 'LEFT' | 'DOWN' | 'RIGHT') => {
+        const x = col * TILE;
+        const y = row * TILE;
+        const cx = x + 32;
+        const cy = y + 32;
 
-            ctx.save();
-            ctx.translate(centerX, centerY);
-            
-            // Bobbing animation based on column
-            const bob = (col % 2 === 0) ? -2 : 2;
-            ctx.translate(0, bob);
+        ctx.save();
+        ctx.translate(cx, cy);
 
-            if (type === 'ZOMBIE') {
-                ctx.fillStyle = color;
-                ctx.fillRect(-10, -20, 20, 20); // Head
-                ctx.fillRect(-8, 0, 16, 16);   // Body
-                // Arms
-                ctx.fillRect(-14, 0, 6, 12);
-                ctx.fillRect(8, 0, 6, 12);
-                
-                ctx.fillStyle = '#333';
-                ctx.fillRect(-5, -15, 4, 4);   // Eye
-                ctx.fillRect(3, -15, 4, 4);    // Eye
-            } else if (type === 'ROBOT') {
-                ctx.fillStyle = '#A0AEC0';
-                ctx.fillRect(-12, -22, 24, 24); // Head
-                ctx.fillStyle = '#F56565';
-                ctx.fillRect(-10, -14, 20, 4); // Visor
-                ctx.fillStyle = '#718096';
-                ctx.fillRect(-10, 2, 20, 16); // Body
-                // Antenna
-                ctx.fillStyle = '#CBD5E0';
-                ctx.fillRect(-2, -28, 4, 6);
-            } else if (type === 'ALIEN') {
-                ctx.fillStyle = color;
-                ctx.beginPath();
-                ctx.ellipse(0, -14, 12, 14, 0, 0, Math.PI * 2); // Head
-                ctx.fill();
-                ctx.fillStyle = 'black';
-                ctx.beginPath();
-                ctx.ellipse(-5, -14, 4, 6, -0.2, 0, Math.PI * 2); // Eyes
-                ctx.ellipse(5, -14, 4, 6, 0.2, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = color;
-                ctx.fillRect(-8, 0, 16, 14); // Body
-            }
-            ctx.restore();
+        // Bounce/Wobble Animation
+        let bob = (col % 2 === 0) ? -2 : 2;
+        let legOffset = Math.sin(col * Math.PI / 2) * 4;
+        
+        // Idle frame (col 0) should be stable
+        if (col === 0) {
+            bob = 0;
+            legOffset = 0;
         }
+        
+        ctx.translate(0, bob);
+
+        if (type === 'ZOMBIE') {
+            // --- ZOMBIE ---
+            const skin = '#68d391';
+            const clothes = '#3182CE';
+            const blood = '#C53030';
+            
+            // Legs
+            ctx.fillStyle = '#1A202C';
+            ctx.fillRect(-6 - legOffset, 10, 5, 12);
+            ctx.fillRect(2 + legOffset, 10, 5, 12);
+
+            // Body
+            ctx.fillStyle = clothes;
+            ctx.fillRect(-10, -2, 20, 16);
+            // Torn Clothes / Flesh
+            ctx.fillStyle = skin;
+            ctx.fillRect(-4, 2, 8, 4);
+
+            // Head
+            ctx.fillStyle = skin;
+            ctx.fillRect(-12, -24, 24, 24);
+            
+            // Face
+            ctx.fillStyle = '#222';
+            if (direction === 'DOWN') {
+                ctx.fillRect(-6, -16, 4, 4); ctx.fillRect(2, -16, 4, 4); // Eyes
+                ctx.fillStyle = blood; ctx.fillRect(-4, -8, 8, 2); // Mouth
+            } else if (direction === 'RIGHT') {
+                ctx.fillRect(4, -16, 4, 4); // Right Eye
+                ctx.fillStyle = blood; ctx.fillRect(4, -8, 6, 2); 
+                // Arms outstretched
+                ctx.fillStyle = skin; ctx.fillRect(0, -2, 16, 6);
+            } else if (direction === 'LEFT') {
+                ctx.fillRect(-8, -16, 4, 4); // Left Eye
+                ctx.fillStyle = blood; ctx.fillRect(-10, -8, 6, 2);
+                // Arms outstretched
+                ctx.fillStyle = skin; ctx.fillRect(-16, -2, 16, 6);
+            }
+            // Brains/Hair
+            ctx.fillStyle = '#2D3748';
+            ctx.fillRect(-12, -26, 24, 6);
+
+        } else if (type === 'ROBOT') {
+            // --- ROBOT ---
+            const metal = '#A0AEC0';
+            const darkMetal = '#4A5568';
+            const light = '#F56565';
+
+            // Tracks/Legs
+            ctx.fillStyle = darkMetal;
+            ctx.fillRect(-10, 12, 20, 8);
+
+            // Body
+            ctx.fillStyle = metal;
+            ctx.fillRect(-12, -4, 24, 18);
+            // Panel
+            ctx.fillStyle = '#ECC94B';
+            ctx.fillRect(-4, 2, 8, 8);
+
+            // Head
+            ctx.fillStyle = metal;
+            ctx.fillRect(-10, -26, 20, 20);
+            
+            // Visor
+            ctx.fillStyle = light;
+            if (direction === 'DOWN') ctx.fillRect(-8, -20, 16, 4);
+            else if (direction === 'RIGHT') ctx.fillRect(0, -20, 10, 4);
+            else if (direction === 'LEFT') ctx.fillRect(-10, -20, 10, 4);
+
+            // Antenna
+            ctx.fillStyle = darkMetal;
+            ctx.fillRect(-2, -34, 4, 8);
+            ctx.fillStyle = light;
+            ctx.beginPath(); ctx.arc(0, -36, 3, 0, Math.PI*2); ctx.fill();
+
+        } else if (type === 'ALIEN') {
+            // --- ALIEN ---
+            const skin = color; // Pinkish/Purple
+            const eyeColor = 'black';
+
+            // Legs (Thin)
+            ctx.fillStyle = skin;
+            ctx.fillRect(-6 - legOffset, 8, 3, 10);
+            ctx.fillRect(3 + legOffset, 8, 3, 10);
+
+            // Body (Small)
+            ctx.fillRect(-8, -2, 16, 12);
+
+            // Head (Bulbous)
+            ctx.beginPath();
+            ctx.ellipse(0, -16, 12, 14, 0, 0, Math.PI*2);
+            ctx.fill();
+
+            // Eyes (Huge)
+            ctx.fillStyle = eyeColor;
+            if (direction === 'DOWN') {
+                ctx.beginPath();
+                ctx.ellipse(-5, -16, 4, 7, -0.2, 0, Math.PI*2);
+                ctx.ellipse(5, -16, 4, 7, 0.2, 0, Math.PI*2);
+                ctx.fill();
+            } else if (direction === 'RIGHT') {
+                ctx.beginPath();
+                ctx.ellipse(4, -16, 5, 7, 0, 0, Math.PI*2);
+                ctx.fill();
+            } else if (direction === 'LEFT') {
+                ctx.beginPath();
+                ctx.ellipse(-4, -16, 5, 7, 0, 0, Math.PI*2);
+                ctx.fill();
+            }
+        }
+        ctx.restore();
+    };
+
+    // Generate rows for LPC standard
+    // Row 8: Up, Row 9: Left, Row 10: Down, Row 11: Right
+    // We fill columns 0-8 (indices). 0 is Idle, 1-8 are Walk Cycle.
+    for (let i=0; i<=8; i++) {
+        drawFrame(i, 8, 'UP');
+        drawFrame(i, 9, 'LEFT');
+        drawFrame(i, 10, 'DOWN');
+        drawFrame(i, 11, 'RIGHT');
     }
 
     const img = new Image();
@@ -84,39 +174,40 @@ const loadImage = (src: string): Promise<HTMLImageElement> => {
     });
 };
 
+const tryLoadImage = async (filenames: string[]): Promise<HTMLImageElement | null> => {
+    for (const filename of filenames) {
+        try { return await loadImage(`/assets/sprites/${filename}`); } catch (e) {}
+        try { return await loadImage(`/${filename}`); } catch (e) {}
+        try { return await loadImage(`./${filename}`); } catch (e) {}
+    }
+    return null;
+};
+
 export const loadAssets = async (): Promise<void> => {
-  // 1. Generate default placeholders (fallback)
-  // These now match the LPC grid layout so they will render correctly if external files fail
+  // 1. Generate detailed placeholders first
   assets['ZOMBIE'] = createPlaceholderSprite('ZOMBIE', '#68d391');
   assets['ROBOT'] = createPlaceholderSprite('ROBOT', '#a0aec0');
   assets['ALIEN'] = createPlaceholderSprite('ALIEN', '#D53F8C');
-  
-  // Map SWARM_ZOMBIE to basic zombie placeholder initially
   assets['SWARM_ZOMBIE'] = assets['ZOMBIE'];
 
-  // 2. Attempt to load actual external sprites
-  //    Assumes files are in public/assets/sprites/
+  // 2. Attempt to load external sprites
   const spriteMappings = [
-    { key: 'ZOMBIE', src: '/assets/sprites/zomb_1.png' },
-    { key: 'ROBOT', src: '/assets/sprites/robot_1.png' },
-    { key: 'ALIEN', src: '/assets/sprites/alien_1.png' }
+    { key: 'ZOMBIE', files: ['zomb_1.png', 'zombie.png'] },
+    { key: 'ROBOT', files: ['robot_1.png', 'robot.png'] },
+    { key: 'ALIEN', files: ['alien_1.png', 'alien.png'] },
+    { key: 'GREY', files: ['greys_1.png', 'grey_squirrel.png', 'squirrel.png'] },
+    { key: 'RED', files: ['red_1.png', 'red_squirrel.png'] },
+    { key: 'GIANT', files: ['indian_1.png', 'giant_squirrel.png'] }
   ];
 
   const promises = spriteMappings.map(async (map) => {
-      try {
-          const img = await loadImage(map.src);
+      const img = await tryLoadImage(map.files);
+      if (img) {
           assets[map.key] = img;
-          // Update derived assets if needed
-          if (map.key === 'ZOMBIE') {
-             assets['SWARM_ZOMBIE'] = img;
-          }
-          console.log(`Loaded sprite: ${map.src}`);
-      } catch (e) {
-          console.warn(`Could not load ${map.src}, using generated placeholder.`);
+          if (map.key === 'ZOMBIE') assets['SWARM_ZOMBIE'] = img;
       }
   });
 
-  // We await all promises so the game doesn't start until we've tried to load everything
   await Promise.all(promises);
 };
 
