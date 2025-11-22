@@ -26,29 +26,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseU
   return (
     <div className="absolute inset-0 bg-gray-900 flex flex-col items-center justify-center overflow-hidden">
       
-      {/* --- DEBUG OVERLAY: REMOVE AFTER CONFIRMING PATH --- */}
-      <div className="absolute top-0 left-0 z-50 bg-white/90 text-black p-2 text-xs font-mono border-b-2 border-r-2 border-red-500 shadow-xl">
-        <p className="font-bold text-red-600 mb-1">IMAGE PATH DEBUGGER</p>
-        <div className="flex gap-4">
-            <div className="flex flex-col items-center">
-                <span>./public/...</span>
-                <img src="./public/assets/graphics/logo.png" className="w-16 h-16 border border-blue-500 object-contain bg-gray-200" alt="Fail" />
-            </div>
-            <div className="flex flex-col items-center">
-                <span>/public/...</span>
-                <img src="/public/assets/graphics/logo.png" className="w-16 h-16 border border-green-500 object-contain bg-gray-200" alt="Fail" />
-            </div>
-            <div className="flex flex-col items-center">
-                <span>assets/...</span>
-                <img src="assets/graphics/logo.png" className="w-16 h-16 border border-purple-500 object-contain bg-gray-200" alt="Fail" />
-            </div>
-        </div>
-      </div>
-      {/* -------------------------------------------------- */}
-
       {/* Background - Single large logo image */}
-      {/* Increased opacity to 0.3 to ensure it is visible if loaded */}
-      <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-30">
+      <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-20">
          <img 
             src="./public/assets/graphics/logo.png"
             alt=""
@@ -78,10 +57,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseU
         <div className="flex-1 flex flex-col items-center md:items-start w-full">
             {!logoError ? (
                 <img 
-                    src="./public/assets/graphics/logotrans.png" 
+                    src="./public/assets/graphics/logo.png" 
                     alt="SQUIRRELVIVOR NUTPOCOLYPSE" 
                     onError={() => setLogoError(true)}
-                    className="w-full max-w-md mx-auto md:mx-0 mb-6 object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500"
+                    className="w-full max-w-xs md:max-w-sm mx-auto md:mx-0 mb-6 object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500"
                 />
             ) : (
                 <div className="mb-6 text-center md:text-left">

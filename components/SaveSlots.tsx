@@ -44,10 +44,10 @@ export const SaveSlots: React.FC<SaveSlotsProps> = ({ onSelect }) => {
         <div className="flex justify-center mb-8">
             {!logoError ? (
                 <img 
-                    src="./public/assets/graphics/logotrans.png" 
+                    src="./public/assets/graphics/logo.png" 
                     alt="SQUIRRELVIVOR NUTPOCOLYPSE" 
                     onError={() => setLogoError(true)}
-                    className="w-full max-w-2xl object-contain drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]"
+                    className="w-full max-w-sm object-contain drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]"
                 />
             ) : (
                 <div className="text-center">
