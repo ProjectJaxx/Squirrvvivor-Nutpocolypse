@@ -12,6 +12,7 @@ export const SaveSlots: React.FC<SaveSlotsProps> = ({ onSelect }) => {
   const [slots, setSlots] = useState<SaveSlot[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState('');
+  const [logoError, setLogoError] = useState(false);
 
   useEffect(() => {
     setSlots(getSlots());
@@ -40,9 +41,24 @@ export const SaveSlots: React.FC<SaveSlotsProps> = ({ onSelect }) => {
       <div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
       
       <div className="z-10 w-full max-w-5xl p-8">
-        <h1 className="text-5xl md:text-6xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-600 mb-2 pixel-font drop-shadow-sm">
-            SQUIRRELVIVOR<br className="md:hidden"/> NUTPOCOLYPSE
-        </h1>
+        <div className="flex justify-center mb-8">
+            {!logoError ? (
+                <img 
+                    src="/public/assets/graphics/logotrans.png" 
+                    alt="SQUIRRELVIVOR NUTPOCOLYPSE" 
+                    onError={() => setLogoError(true)}
+                    className="w-full max-w-2xl object-contain drop-shadow-[0_0_15px_rgba(245,158,11,0.5)]"
+                />
+            ) : (
+                <div className="text-center">
+                    <h1 className="text-5xl font-bold text-amber-500 pixel-font tracking-wider">
+                        SQUIRREL<span className="text-white">VIVOR</span>
+                    </h1>
+                    <h2 className="text-2xl font-bold text-red-500 tracking-widest mt-2">NUTPOCOLYPSE</h2>
+                </div>
+            )}
+        </div>
+
         <p className="text-center text-gray-400 mb-12 font-serif italic">Select a save slot to continue...</p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

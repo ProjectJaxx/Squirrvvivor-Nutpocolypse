@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { MainMenu } from './components/MainMenu';
@@ -84,6 +85,13 @@ const App: React.FC = () => {
                 char.cooldownReduction = (char.cooldownReduction || 0) + totalBoost;
             } else if (def.statKey === 'revive') {
                 char.revives = (char.revives || 0) + totalBoost;
+            } else if (def.statKey === 'ability') {
+                if (char.activeAbility) {
+                    char.activeAbility = { ...char.activeAbility };
+                    // Reduce cooldown by X%, Increase Duration by X%
+                    char.activeAbility.cooldown = char.activeAbility.cooldown * (1 - totalBoost);
+                    char.activeAbility.duration = char.activeAbility.duration * (1 + totalBoost);
+                }
             }
         }
     });

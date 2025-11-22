@@ -90,6 +90,16 @@ export const ALL_UPGRADES: Upgrade[] = [
             player.magnetRadius = (player.magnetRadius || 150) * 1.5;
         },
     },
+    {
+        id: 'SCURRY',
+        name: 'Scurry',
+        description: 'Calls a loyal squirrel companion to fight by your side!',
+        rarity: 'LEGENDARY',
+        icon: '🐿️',
+        apply: (player: Player) => {
+            player.maxCompanions = (player.maxCompanions || 0) + 1;
+        },
+    },
     // --- CROW AURA ---
     {
         id: 'CROW_AURA',

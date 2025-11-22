@@ -14,7 +14,7 @@ export type EntityType =
   'NUT_SHELL' | 'EXPLODING_ACORN' | 'CROW_FEATHER' | 'DROP' | 'CROW' | 
   'EXPLOSION' | 'SMOKE' | 'TRAIL' | 'OBSTACLE' | 'FRAGMENT' | 'SPARK' | 'FLASH' |
   'BRUTE_ZOMBIE' | 'RUNNER_ZOMBIE' | 'SPITTER_ZOMBIE' | 'VENOM_SPIT' |
-  'SWARM_ZOMBIE' | 'SHIELD_ZOMBIE' |
+  'SWARM_ZOMBIE' | 'SHIELD_ZOMBIE' | 'GHOST' | 'TANK_BOT' | 'MARTIAN_SPIDER' |
   'BOSS_ZOMBIE' | 'BOSS_ROBOT' | 'BOSS_ALIEN' | 'BOSS_MISSILE' | 'LASER' | 'COMPANION';
 
 export interface Entity {
@@ -241,7 +241,7 @@ export interface BaseUpgradeDef {
     baseCost: number;
     costMultiplier: number; // How much cost increases per level
     maxLevel: number;
-    statKey: 'hp' | 'speed' | 'magnetRadius' | 'damage' | 'maxCompanions' | 'cooldown' | 'revive'; // Which stat on character/player it affects
+    statKey: 'hp' | 'speed' | 'magnetRadius' | 'damage' | 'maxCompanions' | 'cooldown' | 'revive' | 'ability'; // Which stat on character/player it affects
     increment: number; // Amount per level
 }
 

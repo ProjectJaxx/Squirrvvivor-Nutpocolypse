@@ -23,7 +23,7 @@ const getNoiseBuffer = (ctx: AudioContext) => {
     return noiseBuffer;
 };
 
-export type SoundType = 'NUT' | 'CANNON' | 'FEATHER' | 'AURA' | 'EXPLOSION' | 'HIT' | 'DEATH' | 'LEVELUP' | 'COLLECT' | 'WARNING';
+export type SoundType = 'NUT' | 'CANNON' | 'FEATHER' | 'AURA' | 'EXPLOSION' | 'HIT' | 'DEATH' | 'LEVELUP' | 'COLLECT' | 'WARNING' | 'BUY';
 
 export const playSound = (type: SoundType) => {
   const ctx = getCtx();
@@ -229,6 +229,27 @@ export const playSound = (type: SoundType) => {
             osc.connect(gain);
             osc.start(now);
             osc.stop(now + 2.0);
+            break;
+        }
+        case 'BUY': {
+            // Coin purchase jingle
+            const now = ctx.currentTime;
+            // Double high ping
+            const freqs = [1500, 2000];
+            freqs.forEach((f, i) => {
+                const osc = ctx.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(f, now + (i * 0.1));
+                
+                const gain = ctx.createGain();
+                gain.connect(masterGain);
+                gain.gain.setValueAtTime(0.2, now + (i * 0.1));
+                gain.gain.exponentialRampToValueAtTime(0.01, now + (i * 0.1) + 0.2);
+                
+                osc.connect(gain);
+                osc.start(now + (i * 0.1));
+                osc.stop(now + (i * 0.1) + 0.2);
+            });
             break;
         }
     }

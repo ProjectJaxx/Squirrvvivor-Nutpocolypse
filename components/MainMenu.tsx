@@ -17,6 +17,7 @@ interface MainMenuProps {
 
 export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseUpgrades, selectedCharacter, onSelectCharacter, currentSlot, onSwitchSlot }) => {
   const [lore, setLore] = useState<string>("Loading arcane squirrel wisdom...");
+  const [logoError, setLogoError] = useState(false);
 
   useEffect(() => {
     generateLore().then(setLore);
@@ -24,17 +25,21 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseU
 
   return (
     <div className="absolute inset-0 bg-gray-900 flex flex-col items-center justify-center overflow-hidden">
-      {/* Background Flair */}
-      <div className="absolute inset-0 opacity-20 pointer-events-none">
-        {[...Array(20)].map((_, i) => (
-            <div key={i} className="absolute text-4xl animate-bounce" 
+      {/* Background Flair - Using logo.png as floating elements */}
+      <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden">
+        {[...Array(15)].map((_, i) => (
+            <img 
+                key={i} 
+                src="/public/assets/graphics/logo.png"
+                alt=""
+                className="absolute w-24 h-24 object-contain animate-bounce opacity-30" 
                 style={{ 
                     top: `${Math.random() * 100}%`, 
                     left: `${Math.random() * 100}%`,
-                    animationDuration: `${Math.random() * 5 + 2}s`
-                }}>
-                {Math.random() > 0.5 ? '🌰' : '🧟'}
-            </div>
+                    animationDuration: `${Math.random() * 5 + 5}s`,
+                    transform: `rotate(${Math.random() * 360}deg)`
+                }} 
+            />
         ))}
       </div>
       
@@ -57,10 +62,22 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseU
         
         {/* Left: Title and Controls */}
         <div className="flex-1 flex flex-col items-center md:items-start w-full">
-            <h1 className="text-3xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-600 mb-4 pixel-font drop-shadow-sm text-center md:text-left leading-tight">
-            SQUIRRELVIVOR<br/>NUTPOCOLYPSE
-            </h1>
-            
+            {!logoError ? (
+                <img 
+                    src="/public/assets/graphics/logotrans.png" 
+                    alt="SQUIRRELVIVOR NUTPOCOLYPSE" 
+                    onError={() => setLogoError(true)}
+                    className="w-full max-w-md mx-auto md:mx-0 mb-6 object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500"
+                />
+            ) : (
+                <div className="mb-6 text-center md:text-left">
+                    <h1 className="text-4xl md:text-6xl font-bold text-amber-500 pixel-font leading-tight">
+                        SQUIRREL<span className="text-white">VIVOR</span>
+                    </h1>
+                    <h2 className="text-xl md:text-2xl font-bold text-red-500 tracking-widest">NUTPOCOLYPSE</h2>
+                </div>
+            )}
+
             {currentSlot && (
                 <div className="flex gap-4 mb-4 text-sm w-full bg-gray-900/50 p-2 rounded border border-gray-700 justify-center md:justify-start">
                     <div className="flex flex-col items-center px-2">

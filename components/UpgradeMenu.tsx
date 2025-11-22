@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Upgrade } from '../types';
 import { Sparkles } from 'lucide-react';
 
@@ -9,6 +9,8 @@ interface UpgradeMenuProps {
 }
 
 export const UpgradeMenu: React.FC<UpgradeMenuProps> = ({ upgrades, onSelect }) => {
+  const [imgError, setImgError] = useState(false);
+
   if (!upgrades || upgrades.length === 0) {
       return (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-50 p-4">
@@ -29,7 +31,17 @@ export const UpgradeMenu: React.FC<UpgradeMenuProps> = ({ upgrades, onSelect }) 
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm z-50 p-4">
       <div className="bg-gray-800 border-4 border-amber-600 rounded-lg p-4 md:p-8 max-w-4xl w-full shadow-2xl max-h-[90vh] overflow-y-auto transform transition-all scale-100">
-        <div className="text-center mb-4 md:mb-8">
+        <div className="text-center mb-4 md:mb-8 flex flex-col items-center">
+            {!imgError ? (
+                <img 
+                    src="/public/assets/graphics/logo.png" 
+                    alt="Level Up" 
+                    onError={() => setImgError(true)}
+                    className="w-16 h-16 mb-2 object-contain drop-shadow-lg animate-pulse" 
+                />
+            ) : (
+                <div className="text-4xl mb-2">🌰</div>
+            )}
             <h2 className="text-3xl md:text-4xl font-bold text-amber-400 pixel-font mb-2">LEVEL UP!</h2>
             <p className="text-gray-400 text-sm">Choose your destiny, squirrel.</p>
         </div>

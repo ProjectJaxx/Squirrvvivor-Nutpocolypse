@@ -22,30 +22,32 @@ const shuffle = <T,>(array: T[]): T[] => {
 };
 
 const getUILayout = (width: number, height: number) => {
-    const isMobile = width < 768;
-    const uiScale = isMobile ? 1.4 : 1.0; 
+    const isMobile = width < 800;
+    const uiScale = isMobile ? 1.3 : 1.0; 
     
-    const safeMarginX = 20;
-    const safeMarginY = 20; 
+    const safeMarginX = isMobile ? 40 : 20;
+    const safeMarginY = isMobile ? 40 : 20; 
 
     const pauseSize = 40 * uiScale;
     
     // Sprint Button (Main Action - Bottom Right)
-    const sprintRadius = isMobile ? 60 : 40;
+    const sprintRadius = isMobile ? 60 : 45;
     const sprintX = width - safeMarginX - sprintRadius;
-    const sprintY = height - safeMarginY - sprintRadius - (isMobile ? 20 : 0);
+    const sprintY = height - safeMarginY - sprintRadius;
 
     // Ability Button (Secondary Action - To the left of Sprint in an arc)
-    const abilityRadius = isMobile ? 50 : 32;
-    const abilityX = sprintX - (isMobile ? 110 : 90);
-    const abilityY = sprintY + (isMobile ? 20 : 10); 
+    const abilityRadius = isMobile ? 50 : 35;
+    // Offset relative to sprint to form a natural thumb arc
+    const abilityX = sprintX - (isMobile ? 130 : 100);
+    const abilityY = sprintY + (isMobile ? 30 : 10); 
 
     return {
         isMobile,
         uiScale,
         pause: { x: width - safeMarginX - pauseSize, y: safeMarginY, w: pauseSize, h: pauseSize },
-        sprint: { x: sprintX, y: sprintY, r: sprintRadius, hitR: sprintRadius * 1.3 },
-        ability: { x: abilityX, y: abilityY, r: abilityRadius, hitR: abilityRadius * 1.3 }
+        // Generous hit boxes
+        sprint: { x: sprintX, y: sprintY, r: sprintRadius, hitR: sprintRadius * 1.4 },
+        ability: { x: abilityX, y: abilityY, r: abilityRadius, hitR: abilityRadius * 1.4 }
     };
 };
 
@@ -317,6 +319,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         : { ...INITIAL_GAME_STATE.player.activeAbility };
     }
     
+    // Reset companions
+    state.companions = [];
     if (state.player.maxCompanions && state.player.maxCompanions > 0) {
         for (let i = 0; i < state.player.maxCompanions; i++) {
             state.companions.push({
@@ -468,27 +472,36 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const t = e.changedTouches[i];
             const tx = t.clientX;
             const ty = t.clientY;
-            
+            let hitUI = false;
+
+            // Pause check
             if (tx >= layout.pause.x && tx <= layout.pause.x + layout.pause.w &&
                 ty >= layout.pause.y && ty <= layout.pause.y + layout.pause.h) {
                 onTogglePause();
-                continue;
+                hitUI = true;
             }
 
-            const distAbility = Math.hypot(tx - layout.ability.x, ty - layout.ability.y);
-            if (distAbility < layout.ability.hitR) {
-                touchRef.current.abilityId = t.identifier;
-                inputRef.current.ability = true; 
-                continue;
+            // Check Ability Button First
+            if (!hitUI) {
+                const distAbility = Math.hypot(tx - layout.ability.x, ty - layout.ability.y);
+                if (distAbility < layout.ability.hitR) {
+                    touchRef.current.abilityId = t.identifier;
+                    inputRef.current.ability = true; 
+                    hitUI = true;
+                }
             }
 
-            const distSprint = Math.hypot(tx - layout.sprint.x, ty - layout.sprint.y);
-            if (distSprint < layout.sprint.hitR) {
-                touchRef.current.sprintId = t.identifier;
-                continue;
+            // Check Sprint Button
+            if (!hitUI) {
+                const distSprint = Math.hypot(tx - layout.sprint.x, ty - layout.sprint.y);
+                if (distSprint < layout.sprint.hitR) {
+                    touchRef.current.sprintId = t.identifier;
+                    hitUI = true;
+                }
             }
 
-            if (touchRef.current.joyId === null && tx < width * 0.6) {
+            // Joystick logic - Allow anywhere on the left half if not hitting UI
+            if (!hitUI && touchRef.current.joyId === null && tx < width * 0.5) {
                 touchRef.current.joyId = t.identifier;
                 touchRef.current.joyStartX = tx;
                 touchRef.current.joyStartY = ty;
@@ -587,7 +600,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               if (inputRef.current.right) dx += 1;
 
               if (touchRef.current.joyId !== null) {
-                  const maxDist = 75; 
+                  const maxDist = layout.isMobile ? 100 : 75; 
                   const deadZone = 10; 
                   const jx = touchRef.current.joyCurX - touchRef.current.joyStartX;
                   const jy = touchRef.current.joyCurY - touchRef.current.joyStartY;
@@ -673,9 +686,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   if (canMoveY) p.y += dy * currentSpeed;
               }
 
-              // ... (Companion, Ability, Obs checks, Cover logic remain same) ...
+              // Check for new companions (from upgrades)
+              const maxComps = state.player.maxCompanions || 0;
+              if (state.companions.length < maxComps) {
+                   const newIdx = state.companions.length;
+                   state.companions.push({
+                        id: `comp-${state.time}-${newIdx}`,
+                        x: state.player.x,
+                        y: state.player.y,
+                        radius: 10,
+                        type: 'COMPANION',
+                        color: '#F6E05E',
+                        offsetAngle: 0,
+                        cooldown: 60,
+                        cooldownTimer: 0
+                   });
+              }
+
               // --- COMPANION LOGIC ---
               state.companions.forEach((comp, index) => {
+                   const total = state.companions.length;
+                   const targetAngle = (Math.PI * 2 / total) * index;
+                   comp.offsetAngle = targetAngle; // Hard sync for even distribution
+
                    const angleOffset = (state.time * 0.01) + comp.offsetAngle; 
                    const formationRadius = 45; 
                    const targetX = p.x + Math.cos(angleOffset) * formationRadius;
@@ -814,6 +847,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                   enemyHp *= 0.6;
                                   enemyColor = '#F6AD55'; // Sickly Orange/Yellow
                                   enemyRadius = 14;
+                              } else if (currentWave >= 3 && Math.random() > 0.85) {
+                                  enemyType = 'GHOST';
+                                  enemySpeed *= 1.2;
+                                  enemyHp *= 0.5;
+                                  enemyColor = '#A0F0ED'; // Cyan-ish ghost
+                                  enemyRadius = 15;
                               } else if (currentWave >= 4 && Math.random() > 0.9) {
                                   enemyType = 'BRUTE_ZOMBIE';
                                   enemySpeed *= 0.6;
@@ -831,7 +870,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                   enemyColor = COLORS.robot;
                                   enemyRadius = 18;
 
-                                  if (currentWave >= 3 && Math.random() > 0.85) {
+                                  if (currentWave >= 3 && Math.random() > 0.9) {
+                                     enemyType = 'TANK_BOT';
+                                     enemyHp *= 3;
+                                     enemySpeed *= 0.5;
+                                     enemyColor = '#1A202C'; // Dark
+                                     enemyRadius = 28;
+                                     enemyDmg *= 2;
+                                  } else if (currentWave >= 3 && Math.random() > 0.85) {
                                       enemyType = 'BOSS_ROBOT'; // Elite/Boss variant
                                       enemyHp *= 2;
                                       enemyRadius = 25;
@@ -853,6 +899,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                   enemySpeed = (2.0 + (Math.random() * 0.5)) * stageSpeedMult;
                                   enemyColor = COLORS.alien;
                                   enemyRadius = 14; 
+
+                                  if (currentWave >= 2 && Math.random() > 0.85) {
+                                      enemyType = 'MARTIAN_SPIDER';
+                                      enemySpeed *= 1.3;
+                                      enemyHp *= 0.8;
+                                      enemyColor = '#9B2C2C';
+                                      enemyRadius = 20;
+                                  }
                               }
                           }
                           
@@ -879,7 +933,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   }
               }
 
-              // ... (Enemy logic remains same) ...
               // --- ENEMY LOGIC ---
               const enemyCount = state.enemies.length;
               for (let i=0; i<enemyCount; i++) {
@@ -1506,7 +1559,90 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 ctx.rotate(wobble); 
                 if (facing === 'LEFT') ctx.scale(-1, 1);
 
-                if (type.includes('ZOMBIE') || type === 'SWARM_ZOMBIE') {
+                if (type === 'GHOST') {
+                    ctx.globalAlpha = 0.6 + Math.sin(timer * 0.1) * 0.2;
+                    ctx.fillStyle = color;
+                    
+                    // Wavy bottom
+                    ctx.beginPath();
+                    ctx.arc(0, -r * 0.5, r, Math.PI, 0);
+                    const waves = 4;
+                    const waveH = r * 0.3;
+                    for (let i = 0; i <= waves; i++) {
+                        const x = r - (r * 2 * i) / waves;
+                        const y = r * 0.8 + (i % 2 === 0 ? waveH : -waveH);
+                        ctx.lineTo(x, y);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Hollow Eyes
+                    ctx.fillStyle = '#1A202C';
+                    ctx.beginPath(); ctx.arc(r * 0.3, -r * 0.3, r * 0.2, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(-r * 0.1, -r * 0.3, r * 0.2, 0, Math.PI * 2); ctx.fill();
+                    
+                    ctx.globalAlpha = 1.0;
+                }
+                else if (type === 'TANK_BOT') {
+                    const treadOffset = Math.sin(timer * 0.5) * 2;
+                    
+                    // Treads
+                    ctx.fillStyle = '#2D3748';
+                    ctx.fillRect(-r * 1.2, r * 0.2 + treadOffset, r * 0.6, r * 0.8);
+                    ctx.fillRect(r * 0.6, r * 0.2 - treadOffset, r * 0.6, r * 0.8);
+
+                    // Hull
+                    ctx.fillStyle = '#4A5568';
+                    ctx.fillRect(-r, -r * 0.8, r * 2, r * 1.2);
+                    
+                    // Turret
+                    const turretAngle = Math.sin(timer * 0.05) * 0.5;
+                    ctx.save();
+                    ctx.translate(0, -r * 0.5);
+                    ctx.rotate(turretAngle);
+                    
+                    // Barrel
+                    ctx.fillStyle = '#1A202C';
+                    ctx.fillRect(0, -r * 0.2, r * 1.5, r * 0.4);
+                    
+                    // Dome
+                    ctx.fillStyle = color;
+                    ctx.beginPath(); ctx.arc(0, 0, r * 0.6, 0, Math.PI * 2); ctx.fill();
+                    
+                    ctx.restore();
+                }
+                else if (type === 'MARTIAN_SPIDER') {
+                    const legs = 6;
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 3;
+                    ctx.lineCap = 'round';
+                    
+                    // Legs
+                    for (let i = 0; i < legs; i++) {
+                        const angle = (i / legs) * Math.PI * 2 + (timer * 0.1);
+                        const legLen = r * 1.8;
+                        const lx = Math.cos(angle) * legLen;
+                        const ly = Math.sin(angle) * legLen;
+                        
+                        const lift = Math.sin(timer * 0.2 + i) * 5;
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.quadraticCurveTo(lx * 0.5, ly * 0.5 - lift * 2, lx, ly - lift);
+                        ctx.stroke();
+                    }
+
+                    // Body
+                    ctx.fillStyle = '#742A2A';
+                    ctx.beginPath(); ctx.arc(0, 0, r * 0.6, 0, Math.PI * 2); ctx.fill();
+                    
+                    // Eyes (Many)
+                    ctx.fillStyle = '#F6E05E';
+                    ctx.beginPath(); ctx.arc(r*0.2, -r*0.2, 2, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(-r*0.2, -r*0.2, 2, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(0, -r*0.3, 3, 0, Math.PI*2); ctx.fill();
+                }
+                else if (type.includes('ZOMBIE') || type === 'SWARM_ZOMBIE') {
                     let skinColor = color;
                     let shirtColor = '#2F855A';
                     let scaleX = 1, scaleY = 1;
@@ -1518,6 +1654,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     } else if (type === 'BRUTE_ZOMBIE') {
                         scaleX = 1.4; scaleY = 1.2;
                         shirtColor = '#744210'; 
+                        // Brute details
+                        ctx.fillStyle = '#2D3748'; ctx.beginPath(); ctx.arc(0, -r*1.5, 3, 0, Math.PI*2); ctx.fill(); // Flies?
                     } else if (type === 'SHIELD_ZOMBIE') {
                         shirtColor = '#4A5568'; 
                     }
@@ -1535,6 +1673,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     ctx.moveTo(-r*0.7, -r*0.8); ctx.lineTo(r*0.7, -r*0.8); 
                     ctx.lineTo(r*0.5, r); ctx.lineTo(-r*0.5, r); 
                     ctx.closePath(); ctx.fill();
+
+                    // Tatter details
+                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.beginPath(); ctx.moveTo(-r*0.3, r*0.5); ctx.lineTo(0, r*0.8); ctx.lineTo(r*0.3, r*0.5); ctx.fill();
 
                     // Head
                     ctx.fillStyle = skinColor;
@@ -1725,7 +1867,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              switch (e.type) {
                 case 'PLAYER': { const p = e as Player; drawVectorSquirrel(p.radius, p.color, p.facing, p.animationState, p.frameTimer); break; }
                 case 'COMPANION': { const c = e as Companion; const facing = state.player.x < c.x ? 'LEFT' : 'RIGHT'; drawVectorSquirrel(c.radius, c.color, facing, 'WALKING', state.time + parseInt(c.id.split('-')[1])*100, true); break; }
-                case 'SWARM_ZOMBIE': case 'ZOMBIE': case 'ROBOT': case 'ALIEN': case 'BRUTE_ZOMBIE': case 'RUNNER_ZOMBIE': case 'SHIELD_ZOMBIE': case 'BOSS_ROBOT': { 
+                case 'SWARM_ZOMBIE': case 'ZOMBIE': case 'ROBOT': case 'ALIEN': case 'BRUTE_ZOMBIE': case 'RUNNER_ZOMBIE': case 'SHIELD_ZOMBIE': case 'BOSS_ROBOT': case 'GHOST': case 'TANK_BOT': case 'MARTIAN_SPIDER': { 
                     drawVectorEnemy(e as Enemy, state.time + parseFloat(e.id.split('-')[2] || '0')*10); break; 
                 }
                 case 'OBSTACLE': drawVectorObstacle(e as Obstacle); break;
@@ -1776,21 +1918,30 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           // Buttons
           const drawButton = (btn: {x: number, y: number, r: number}, label: string, icon: string, pressed: boolean, color: string, subText?: string) => {
                ctx.save(); ctx.translate(btn.x, btn.y); 
-               if (pressed) ctx.scale(0.9, 0.9);
-               ctx.beginPath(); ctx.arc(0, 0, btn.r, 0, Math.PI * 2); 
-               ctx.fillStyle = pressed ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'; 
-               ctx.fill(); 
-               ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke();
+               if (pressed) ctx.scale(0.95, 0.95);
                
+               // Glow
+               if (pressed) {
+                   ctx.shadowColor = color;
+                   ctx.shadowBlur = 20;
+               }
+
+               ctx.beginPath(); ctx.arc(0, 0, btn.r, 0, Math.PI * 2); 
+               ctx.fillStyle = pressed ? 'rgba(255,255,255,0.3)' : 'rgba(20,20,20,0.6)'; 
+               ctx.fill(); 
+               ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.stroke();
+               
+               ctx.shadowBlur = 0;
+
                ctx.fillStyle = 'white'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                ctx.font = `${btn.r * 0.5}px sans-serif`; ctx.fillText(icon, 0, -btn.r * 0.1);
-               if (label) { ctx.font = `bold ${12 * layout.uiScale}px sans-serif`; ctx.fillText(label, 0, btn.r * 0.4); }
+               if (label) { ctx.font = `bold ${14 * layout.uiScale}px sans-serif`; ctx.fillText(label, 0, btn.r * 0.45); }
                if (subText) { ctx.font = `10px sans-serif`; ctx.fillStyle = '#ccc'; ctx.fillText(subText, 0, btn.r + 15); }
                ctx.restore();
           }
 
           const isSprinting = touchRef.current.sprintId !== null || inputRef.current.sprint;
-          drawButton(layout.sprint, 'RUN', '👟', isSprinting, 'rgba(255,255,255,0.5)');
+          drawButton(layout.sprint, 'RUN', '👟', isSprinting, isSprinting ? '#48BB78' : 'rgba(255,255,255,0.5)');
 
           const abil = state.player.activeAbility;
           if (abil) {
@@ -1798,14 +1949,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               const isPressed = touchRef.current.abilityId !== null || inputRef.current.ability;
               
               ctx.save(); ctx.translate(layout.ability.x, layout.ability.y); 
-              if (isPressed) ctx.scale(0.9, 0.9);
+              if (isPressed) ctx.scale(0.95, 0.95);
               
+              if (isPressed) {
+                  ctx.shadowColor = '#F6E05E'; ctx.shadowBlur = 20;
+              }
+
               // Cooldown Arc
               ctx.beginPath(); ctx.arc(0, 0, layout.ability.r, 0, Math.PI * 2);
-              ctx.fillStyle = cooldownPct > 0 ? 'rgba(0,0,0,0.6)' : 'rgba(246, 224, 94, 0.4)';
+              ctx.fillStyle = cooldownPct > 0 ? 'rgba(0,0,0,0.6)' : 'rgba(20,20,20,0.6)';
               ctx.fill();
-              ctx.strokeStyle = cooldownPct > 0 ? '#555' : '#F6E05E'; ctx.lineWidth = 3; ctx.stroke();
+              ctx.strokeStyle = cooldownPct > 0 ? '#555' : '#F6E05E'; ctx.lineWidth = 4; ctx.stroke();
               
+              ctx.shadowBlur = 0;
+
               if (cooldownPct > 0) {
                    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.moveTo(0,0); 
                    ctx.arc(0, 0, layout.ability.r, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * cooldownPct)); 

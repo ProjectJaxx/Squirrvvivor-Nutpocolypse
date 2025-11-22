@@ -1,4 +1,5 @@
 
+
 import { GameState, Player, Weapon, SquirrelCharacter, StageDuration, BaseUpgradeDef } from './types';
 
 export const CANVAS_WIDTH = window.innerWidth;
@@ -238,12 +239,23 @@ export const BASE_UPGRADES_LIST: BaseUpgradeDef[] = [
         increment: 0.05
     },
     {
+        id: 'BASE_ABILITY',
+        name: 'Hidden Technique',
+        description: 'Improves Special Attack (Spacebar). -10% Cooldown, +10% Duration.',
+        icon: '✨',
+        baseCost: 250,
+        costMultiplier: 2.0,
+        maxLevel: 5,
+        statKey: 'ability',
+        increment: 0.1 // 10% improvement
+    },
+    {
         id: 'BASE_SCURRY',
         name: 'Scurry',
         description: 'Calls a loyal squirrel companion to fight by your side.',
         icon: '🐿️',
-        baseCost: 500,
-        costMultiplier: 2.0,
+        baseCost: 1000,
+        costMultiplier: 2.5,
         maxLevel: 4,
         statKey: 'maxCompanions',
         increment: 1
