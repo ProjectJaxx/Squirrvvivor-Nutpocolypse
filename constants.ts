@@ -250,40 +250,52 @@ export interface SpriteSheetDefinition {
     };
 }
 
+// Assuming LPC style sheets (64x64 frames, 13 columns)
+// Row 11 (index 143 start) is usually "Walk Right"
+const LPC_COLS = 13;
+const WALK_RIGHT_ROW_START = 11 * LPC_COLS; 
+
 export const SPRITE_DEFS: { [key: string]: SpriteSheetDefinition } = {
     SQUIRREL: {
-        columns: 5, // 5 frames in a horizontal strip
+        columns: 5, // 5 frames in a horizontal strip (Standard Squirrel)
         frameWidth: 32,
         frameHeight: 32,
         animations: {
-            // 1 rest, 2 3 4 run, 5 rest
-            // Indices: 0 (Rest), 1 (Run), 2 (Run), 3 (Run), 4 (Rest)
-            IDLE: { frames: [0, 4], speed: 30 }, // Slowly breathe between start and end pose
+            IDLE: { frames: [0, 4], speed: 30 }, 
             WALKING: { frames: [1, 2, 3], speed: 6 },
         }
     },
     ZOMBIE: {
-        columns: 4,
-        frameWidth: 32,
-        frameHeight: 32,
+        columns: 13, // LPC Layout
+        frameWidth: 64,
+        frameHeight: 64,
         animations: {
-            WALKING: { frames: [0, 1, 2, 3], speed: 10 },
+            // Use frames 1-8 of the walking row (indices 144-151)
+            WALKING: { frames: [144, 145, 146, 147, 148, 149, 150, 151], speed: 6 },
+        }
+    },
+    SWARM_ZOMBIE: {
+        columns: 13, // LPC Layout
+        frameWidth: 64,
+        frameHeight: 64,
+        animations: {
+            WALKING: { frames: [144, 145, 146, 147, 148, 149, 150, 151], speed: 6 },
         }
     },
     ROBOT: {
-        columns: 4,
-        frameWidth: 32,
-        frameHeight: 32,
+        columns: 13, // LPC Layout
+        frameWidth: 64,
+        frameHeight: 64,
         animations: {
-            WALKING: { frames: [0, 1, 2, 3], speed: 10 },
+            WALKING: { frames: [144, 145, 146, 147, 148, 149, 150, 151], speed: 6 },
         }
     },
     ALIEN: {
-        columns: 4,
-        frameWidth: 32,
-        frameHeight: 32,
+        columns: 13, // LPC Layout
+        frameWidth: 64,
+        frameHeight: 64,
         animations: {
-            WALKING: { frames: [0, 1, 2, 3], speed: 10 },
+            WALKING: { frames: [144, 145, 146, 147, 148, 149, 150, 151], speed: 6 },
         }
     }
 };

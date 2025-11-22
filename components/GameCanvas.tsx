@@ -22,37 +22,34 @@ const shuffle = <T,>(array: T[]): T[] => {
     return newArray;
 };
 
-// Helper to centralize UI layout logic for responsiveness
+// Improved UI Layout for Mobile Ergonomics
 const getUILayout = (width: number, height: number) => {
     const isMobile = width < 768;
-    const uiScale = isMobile ? 1.2 : 1.0; // Larger UI on mobile
+    const uiScale = isMobile ? 1.2 : 1.0; 
     
-    // Safe zones (avoid notches and home bars)
-    const safeMarginX = 20;
+    const safeMarginX = isMobile ? 30 : 20;
     const safeMarginY = isMobile ? 40 : 20; 
 
-    // Pause Button (Top Right)
-    const pauseSize = 40 * (isMobile ? 1.1 : 1.0);
-    const pauseX = width - safeMarginX - pauseSize;
-    const pauseY = 20;
-
-    // Sprint Button (Bottom Right - Primary Action)
-    const sprintRadius = isMobile ? 45 : 35;
-    const sprintX = width - safeMarginX - sprintRadius - (isMobile ? 10 : 0);
+    const pauseSize = 40 * uiScale;
+    
+    // Sprint (Bottom Right - Primary Thumb Action)
+    const sprintRadius = isMobile ? 50 : 40;
+    const sprintX = width - safeMarginX - sprintRadius;
     const sprintY = height - safeMarginY - sprintRadius;
 
-    // Ability Button (Left of Sprint - Secondary Action)
-    // Offset nicely for thumb arc
-    const abilityRadius = isMobile ? 38 : 30;
-    const abilityX = sprintX - (isMobile ? 110 : 90);
-    const abilityY = sprintY + (isMobile ? 10 : 0); 
+    // Ability (Left of Sprint - Secondary Action)
+    // Offset specifically to follow natural thumb arc
+    const abilityRadius = isMobile ? 40 : 32;
+    const abilityX = sprintX - (isMobile ? 120 : 100);
+    const abilityY = sprintY + (isMobile ? 15 : 0); 
 
     return {
         isMobile,
         uiScale,
-        pause: { x: pauseX, y: pauseY, w: pauseSize, h: pauseSize },
-        sprint: { x: sprintX, y: sprintY, r: sprintRadius, hitR: sprintRadius * 1.4 },
-        ability: { x: abilityX, y: abilityY, r: abilityRadius, hitR: abilityRadius * 1.4 }
+        pause: { x: width - safeMarginX - pauseSize, y: 20 + (isMobile ? 10 : 0), w: pauseSize, h: pauseSize },
+        // hitR is larger than visual r to make buttons easier to tap blindly
+        sprint: { x: sprintX, y: sprintY, r: sprintRadius, hitR: sprintRadius * 1.6 },
+        ability: { x: abilityX, y: abilityY, r: abilityRadius, hitR: abilityRadius * 1.6 }
     };
 };
 
@@ -348,31 +345,33 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const tx = t.clientX;
             const ty = t.clientY;
             
-            // Check Pause (Top Right)
-            if (tx >= layout.pause.x - 20 && tx <= layout.pause.x + layout.pause.w + 20 &&
-                ty >= layout.pause.y - 20 && ty <= layout.pause.y + layout.pause.h + 20) {
+            // Priority 1: Pause (Top Right)
+            if (tx >= layout.pause.x && tx <= layout.pause.x + layout.pause.w &&
+                ty >= layout.pause.y && ty <= layout.pause.y + layout.pause.h) {
                 onTogglePause();
                 continue;
             }
 
-            // Check Sprint (Bottom Right) - Use hitR for generous hit detection
+            // Priority 2: Action Buttons (Sprint & Ability)
+            
+            // Check Ability First (Secondary action, usually harder to hit)
+            const distAbility = Math.hypot(tx - layout.ability.x, ty - layout.ability.y);
+            if (distAbility < layout.ability.hitR) {
+                touchRef.current.abilityId = t.identifier;
+                inputRef.current.ability = true; // Hold to activate
+                continue;
+            }
+
+            // Check Sprint
             const distSprint = Math.hypot(tx - layout.sprint.x, ty - layout.sprint.y);
             if (distSprint < layout.sprint.hitR) {
                 touchRef.current.sprintId = t.identifier;
                 continue;
             }
 
-            // Check Ability (Left of Sprint)
-            const distAbility = Math.hypot(tx - layout.ability.x, ty - layout.ability.y);
-            if (distAbility < layout.ability.hitR) {
-                touchRef.current.abilityId = t.identifier;
-                inputRef.current.ability = true; // Set ability active while held
-                continue;
-            }
-
-            // Joystick (Left Half of Screen)
-            // Only start joystick if not touching buttons and on left side
-            if (touchRef.current.joyId === null && tx < width / 2) {
+            // Priority 3: Joystick (Left Half of Screen)
+            // Only if no other buttons were touched
+            if (touchRef.current.joyId === null && tx < width * 0.6) {
                 touchRef.current.joyId = t.identifier;
                 touchRef.current.joyStartX = tx;
                 touchRef.current.joyStartY = ty;
@@ -472,12 +471,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               if (inputRef.current.right) dx += 1;
 
               if (touchRef.current.joyId !== null) {
-                  const maxDist = 60; // Joystick sensitivity range
+                  const maxDist = 75; // Increased sensitivity range for better analog feel
+                  const deadZone = 10; // Prevent drift
                   const jx = touchRef.current.joyCurX - touchRef.current.joyStartX;
                   const jy = touchRef.current.joyCurY - touchRef.current.joyStartY;
                   const dist = Math.hypot(jx, jy);
                   
-                  if (dist > 5) { 
+                  if (dist > deadZone) { 
                       const scale = Math.min(dist, maxDist) / maxDist;
                       dx = (jx / dist) * scale;
                       dy = (jy / dist) * scale;
@@ -556,41 +556,30 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                    const targetX = p.x + Math.cos(angleOffset) * formationRadius;
                    const targetY = p.y + Math.sin(angleOffset) * formationRadius;
                    
-                   const distToFormation = Math.hypot(targetX - comp.x, targetY - comp.y);
-                   let lerpSpeed = 0.1; 
-                   
-                   if (p.isSprinting) {
-                       lerpSpeed = 0.3; 
-                   } else if (distToFormation > 100) {
-                       lerpSpeed = 0.2; 
-                   }
-
-                   comp.x += (targetX - comp.x) * lerpSpeed;
-                   comp.y += (targetY - comp.y) * lerpSpeed;
+                   // Smooth follow
+                   comp.x += (targetX - comp.x) * 0.1;
+                   comp.y += (targetY - comp.y) * 0.1;
 
                    // Shooting Logic
                    if (comp.cooldownTimer > 0) comp.cooldownTimer--;
                    else {
                         if (state.enemies.length > 0) {
-                            let closestEnemy: Enemy | null = null;
-                            let closestDist = Infinity;
-                            for (const e of state.enemies) {
-                                const d = Math.hypot(e.x - comp.x, e.y - comp.y);
-                                if (d < closestDist) {
-                                    closestDist = d;
-                                    closestEnemy = e;
-                                }
-                            }
-
-                            if (closestEnemy && closestDist < 350) {
+                            // Find random enemy or closest? Random for chaos
+                            const target = state.enemies[Math.floor(Math.random() * state.enemies.length)];
+                            const dist = Math.hypot(target.x - comp.x, target.y - comp.y);
+                            if (dist < 350) {
                                 comp.cooldownTimer = comp.cooldown;
-                                const angle = Math.atan2(closestEnemy.y - comp.y, closestEnemy.x - comp.x) + (Math.random() - 0.5) * 0.1;
+                                const angle = Math.atan2(target.y - comp.y, target.x - comp.x);
+                                
+                                // "Various sized nutlets"
+                                const nutSize = randomRange(2, 6);
+                                const dmgMult = nutSize / 3;
                                 
                                 state.projectiles.push({
                                     id: `c-nut-${state.time}-${Math.random()}`, x: comp.x, y: comp.y, 
-                                    radius: 3, type: 'NUT_SHELL', color: '#FAF089',
+                                    radius: nutSize, type: 'NUT_SHELL', color: '#FAF089',
                                     velocity: { x: Math.cos(angle) * 10, y: Math.sin(angle) * 10 },
-                                    damage: 8, duration: 40, pierce: 1, rotation: 0, hitIds: []
+                                    damage: 8 * dmgMult, duration: 40, pierce: 1, rotation: 0, hitIds: []
                                 });
                             }
                         }
@@ -626,6 +615,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   } else if (ability.cooldownTimer > 0) {
                       ability.cooldownTimer--;
                   } else if (inputRef.current.ability) {
+                      // Auto-activate when held if off cooldown
                       ability.activeTimer = ability.duration;
                       ability.cooldownTimer = ability.cooldown;
                       if (soundEnabled) playSound('LEVELUP'); 
@@ -829,10 +819,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                       e.y += Math.sin(angle) * e.speed * speedMod;
                   }
                   
-                  const animDef = SPRITE_DEFS.ZOMBIE.animations[e.animationState];
-                  e.frameTimer = (e.frameTimer + 1) % animDef.speed;
+                  const animDef = SPRITE_DEFS[e.type] || SPRITE_DEFS.ZOMBIE;
+                  // Fallback to walking animation if current state missing
+                  const anim = animDef.animations[e.animationState] || animDef.animations['WALKING'];
+                  
+                  e.frameTimer = (e.frameTimer + 1) % anim.speed;
                   if (e.frameTimer === 0) {
-                      e.animationFrame = (e.animationFrame + 1) % animDef.frames.length;
+                      e.animationFrame = (e.animationFrame + 1) % anim.frames.length;
                   }
 
                   if ((!p.invincibleTimer || p.invincibleTimer <= 0) && !p.airborneTimer) {
@@ -1389,18 +1382,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 case 'ALIEN': {
                     const enemy = e as Enemy;
                     const def = SPRITE_DEFS[enemy.type] || SPRITE_DEFS['ZOMBIE'];
-                    const sheet = assets[enemy.type];
+                    // Fallback to Zombie asset if specific type is missing to prevent invisible enemies
+                    const sheet = assets[enemy.type] || assets['ZOMBIE'];
+                    
                     if (sheet && SPRITE_DEFS[enemy.type]) {
                         const anim = def.animations[enemy.animationState] || def.animations['WALKING'];
                         const safeFrameIndex = enemy.animationFrame % anim.frames.length;
                         const actualFrameIndex = anim.frames[safeFrameIndex];
+                        
                         const col = actualFrameIndex % def.columns;
                         const row = Math.floor(actualFrameIndex / def.columns);
+                        const sx = col * def.frameWidth;
+                        const sy = row * def.frameHeight;
+
                         ctx.save();
                         if (enemy.x < state.player.x) ctx.scale(-1, 1);
-                        const drawSize = enemy.radius * 2.4; 
+                        
+                        // Calculate draw size to match hit radius, but allow for some sprite overflow
+                        const drawSize = enemy.radius * 2.8; 
                         const offset = drawSize / 2;
-                        ctx.drawImage(sheet, col * 32, row * 32, 32, 32, -offset, -offset, drawSize, drawSize);
+                        
+                        ctx.drawImage(sheet, sx, sy, def.frameWidth, def.frameHeight, -offset, -offset, drawSize, drawSize);
                         ctx.restore();
                     } else {
                         const bounce = enemy.animationState === 'WALKING' ? Math.abs(Math.sin(state.time * 0.2 + parseFloat(enemy.id.split('-')[2] || '0'))) * 3 : 0;
@@ -1489,30 +1491,44 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           if (touchRef.current.joyId !== null) {
               const { joyStartX, joyStartY, joyCurX, joyCurY } = touchRef.current;
               ctx.save();
-              ctx.globalAlpha = 0.5;
-              ctx.beginPath(); ctx.arc(joyStartX, joyStartY, 60 * layout.uiScale, 0, Math.PI * 2);
-              ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 4; ctx.stroke();
+              ctx.globalAlpha = 0.6;
               
-              ctx.beginPath(); ctx.arc(joyCurX, joyCurY, 25 * layout.uiScale, 0, Math.PI * 2);
-              ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fill();
+              // Joystick Base
+              ctx.beginPath(); ctx.arc(joyStartX, joyStartY, 60 * layout.uiScale, 0, Math.PI * 2);
+              const grad = ctx.createRadialGradient(joyStartX, joyStartY, 10, joyStartX, joyStartY, 60 * layout.uiScale);
+              grad.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
+              grad.addColorStop(1, 'rgba(255, 255, 255, 0.3)');
+              ctx.fillStyle = grad; ctx.fill();
+              ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.stroke();
+              
+              // Joystick Knob
+              ctx.beginPath(); ctx.arc(joyCurX, joyCurY, 30 * layout.uiScale, 0, Math.PI * 2);
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'; ctx.fill();
+              ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 5;
               ctx.restore();
           }
 
           // Draw Sprint Button
           const sprintBtn = layout.sprint;
           const isSprinting = touchRef.current.sprintId !== null;
-          ctx.beginPath(); ctx.arc(sprintBtn.x, sprintBtn.y, sprintBtn.r * (isSprinting ? 0.9 : 1.0), 0, Math.PI * 2);
+          ctx.save();
+          ctx.translate(sprintBtn.x, sprintBtn.y);
+          if (isSprinting) ctx.scale(0.95, 0.95);
+          
+          ctx.beginPath(); ctx.arc(0, 0, sprintBtn.r, 0, Math.PI * 2);
           ctx.fillStyle = isSprinting ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)'; ctx.fill();
-          ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+          ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 3; ctx.stroke();
+          
           ctx.fillStyle = 'white'; ctx.font = `bold ${14 * layout.uiScale}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillText('RUN', sprintBtn.x, sprintBtn.y);
+          ctx.fillText('RUN', 0, 0);
+          ctx.restore();
 
           // Draw Ability Button
           const abilityBtn = layout.ability;
           const ability = state.player.activeAbility;
           if (ability) {
               const cooldownPct = ability.cooldownTimer / ability.cooldown;
-              const isPressed = touchRef.current.abilityId !== null;
+              const isPressed = touchRef.current.abilityId !== null || inputRef.current.ability;
               
               ctx.save();
               ctx.translate(abilityBtn.x, abilityBtn.y);
@@ -1521,11 +1537,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               
               ctx.beginPath(); ctx.arc(0, 0, abilityBtn.r, 0, Math.PI * 2);
               ctx.fillStyle = cooldownPct > 0 ? 'rgba(0,0,0,0.5)' : 'rgba(246, 224, 94, 0.4)'; 
-              if (isPressed) ctx.fillStyle = 'rgba(255,255,255,0.6)'; 
+              if (isPressed && cooldownPct <= 0) ctx.fillStyle = 'rgba(255,255,255,0.6)'; 
               ctx.fill();
               ctx.strokeStyle = cooldownPct > 0 ? '#555' : '#F6E05E'; ctx.lineWidth = 3; ctx.stroke();
 
               ctx.fillStyle = 'white'; ctx.font = `${20 * layout.uiScale}px sans-serif`;
+              ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
               ctx.fillText('🌰', 0, 0);
 
               if (cooldownPct > 0) {
