@@ -18,6 +18,7 @@ interface MainMenuProps {
 export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseUpgrades, selectedCharacter, onSelectCharacter, currentSlot, onSwitchSlot }) => {
   const [lore, setLore] = useState<string>("Loading arcane squirrel wisdom...");
   const [logoError, setLogoError] = useState(false);
+  const [bgError, setBgError] = useState(false);
 
   useEffect(() => {
     generateLore().then(setLore);
@@ -28,12 +29,15 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseU
       
       {/* Background - Single large logo image */}
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-20">
-         <img 
-            src="./public/assets/graphics/logo.png"
-            alt=""
-            className="w-[80vw] h-[80vw] max-w-[800px] max-h-[800px] object-contain animate-pulse" 
-            style={{ animationDuration: '8s' }}
-         />
+         {!bgError && (
+             <img 
+                src="./public/assets/graphics/logo.png"
+                alt=""
+                onError={() => setBgError(true)}
+                className="w-[80vw] h-[80vw] max-w-[800px] max-h-[800px] object-contain animate-pulse" 
+                style={{ animationDuration: '8s' }}
+             />
+         )}
       </div>
       
       {currentSlot && (
@@ -57,7 +61,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseU
         <div className="flex-1 flex flex-col items-center md:items-start w-full">
             {!logoError ? (
                 <img 
-                    src="./public/assets/graphics/logo.png" 
+                    src="./public/assets/graphics/logotrans.png" 
                     alt="SQUIRRELVIVOR NUTPOCOLYPSE" 
                     onError={() => setLogoError(true)}
                     className="w-full max-w-xs md:max-w-sm mx-auto md:mx-0 mb-6 object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500"
