@@ -34,7 +34,7 @@ export const UpgradeMenu: React.FC<UpgradeMenuProps> = ({ upgrades, onSelect }) 
         <div className="text-center mb-4 md:mb-8 flex flex-col items-center">
             {!imgError ? (
                 <img 
-                    src="/public/assets/graphics/logo.png" 
+                    src="./public/assets/graphics/logo.png" 
                     alt="Level Up" 
                     onError={() => setImgError(true)}
                     className="w-16 h-16 mb-2 object-contain drop-shadow-lg animate-pulse" 

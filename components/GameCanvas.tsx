@@ -68,6 +68,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const stateRef = useRef<GameState>(JSON.parse(JSON.stringify(INITIAL_GAME_STATE)));
   const inputRef = useRef({ up: false, down: false, left: false, right: false, sprint: false, ability: false });
   const bgPatternRef = useRef<CanvasPattern | null>(null);
+  const nutImageRef = useRef<HTMLImageElement | null>(null);
   
   // Prevent multiple triggers
   const isLevelingUpRef = useRef(false);
@@ -257,6 +258,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   };
 
   useEffect(() => {
+    // PRELOAD NUT LOGO
+    const img = new Image();
+    img.src = './public/assets/graphics/logo.png';
+    img.onload = () => {
+        nutImageRef.current = img;
+    };
+
     const updateSize = () => {
         if (canvasRef.current) {
             canvasRef.current.width = window.innerWidth;
@@ -1871,7 +1879,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     drawVectorEnemy(e as Enemy, state.time + parseFloat(e.id.split('-')[2] || '0')*10); break; 
                 }
                 case 'OBSTACLE': drawVectorObstacle(e as Obstacle); break;
-                case 'NUT_SHELL': drawEmoji('🌰', e.radius, 2, (e as Projectile).rotation); break; 
+                case 'NUT_SHELL': 
+                    if (nutImageRef.current) {
+                         const size = e.radius * 2.5; 
+                         ctx.save();
+                         ctx.rotate((e as Projectile).rotation);
+                         ctx.drawImage(nutImageRef.current, -size/2, -size/2, size, size);
+                         ctx.restore();
+                    } else {
+                        drawEmoji('🌰', e.radius, 2, (e as Projectile).rotation); 
+                    }
+                    break; 
                 case 'EXPLODING_ACORN': drawEmoji('🥥', e.radius, 2, (e as Projectile).rotation); break;
                 case 'DROP': ctx.shadowColor = '#ECC94B'; ctx.shadowBlur = 15; drawEmoji('🥜', e.radius, 2.5, 0, Math.sin(state.time * 0.1) * 0.2); ctx.shadowBlur = 0; break;
                 default: ctx.beginPath(); ctx.arc(0, 0, e.radius, 0, Math.PI * 2); ctx.fill(); break;

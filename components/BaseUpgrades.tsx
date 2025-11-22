@@ -54,7 +54,7 @@ export const BaseUpgrades: React.FC<BaseUpgradesProps> = ({ slot, onBack, onUpda
                 <div className="text-center mb-8 flex flex-col items-center">
                     {!imgError ? (
                         <img 
-                            src="/public/assets/graphics/logo.png" 
+                            src="./public/assets/graphics/logo.png" 
                             alt="Acorn Armory" 
                             onError={() => setImgError(true)}
                             className="w-20 h-20 mb-4 object-contain drop-shadow-lg animate-bounce"

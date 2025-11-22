@@ -25,26 +25,40 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseU
 
   return (
     <div className="absolute inset-0 bg-gray-900 flex flex-col items-center justify-center overflow-hidden">
-      {/* Background Flair - Using logo.png as floating elements */}
-      <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden">
-        {[...Array(15)].map((_, i) => (
-            <img 
-                key={i} 
-                src="/public/assets/graphics/logo.png"
-                alt=""
-                className="absolute w-24 h-24 object-contain animate-bounce opacity-30" 
-                style={{ 
-                    top: `${Math.random() * 100}%`, 
-                    left: `${Math.random() * 100}%`,
-                    animationDuration: `${Math.random() * 5 + 5}s`,
-                    transform: `rotate(${Math.random() * 360}deg)`
-                }} 
-            />
-        ))}
+      
+      {/* --- DEBUG OVERLAY: REMOVE AFTER CONFIRMING PATH --- */}
+      <div className="absolute top-0 left-0 z-50 bg-white/90 text-black p-2 text-xs font-mono border-b-2 border-r-2 border-red-500 shadow-xl">
+        <p className="font-bold text-red-600 mb-1">IMAGE PATH DEBUGGER</p>
+        <div className="flex gap-4">
+            <div className="flex flex-col items-center">
+                <span>./public/...</span>
+                <img src="./public/assets/graphics/logo.png" className="w-16 h-16 border border-blue-500 object-contain bg-gray-200" alt="Fail" />
+            </div>
+            <div className="flex flex-col items-center">
+                <span>/public/...</span>
+                <img src="/public/assets/graphics/logo.png" className="w-16 h-16 border border-green-500 object-contain bg-gray-200" alt="Fail" />
+            </div>
+            <div className="flex flex-col items-center">
+                <span>assets/...</span>
+                <img src="assets/graphics/logo.png" className="w-16 h-16 border border-purple-500 object-contain bg-gray-200" alt="Fail" />
+            </div>
+        </div>
+      </div>
+      {/* -------------------------------------------------- */}
+
+      {/* Background - Single large logo image */}
+      {/* Increased opacity to 0.3 to ensure it is visible if loaded */}
+      <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-30">
+         <img 
+            src="./public/assets/graphics/logo.png"
+            alt=""
+            className="w-[80vw] h-[80vw] max-w-[800px] max-h-[800px] object-contain animate-pulse" 
+            style={{ animationDuration: '8s' }}
+         />
       </div>
       
       {currentSlot && (
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-4">
+        <div className="absolute top-4 right-4 z-20 flex items-center gap-4">
             <div className="flex items-center gap-2 bg-gray-800/80 p-2 px-4 rounded-full border border-gray-600 cursor-pointer hover:bg-gray-700 transition" onClick={onSwitchSlot}>
                 <Save size={16} className="text-amber-400" />
                 <span className="text-sm font-bold text-gray-200">{currentSlot.name}</span>
@@ -64,7 +78,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseU
         <div className="flex-1 flex flex-col items-center md:items-start w-full">
             {!logoError ? (
                 <img 
-                    src="/public/assets/graphics/logotrans.png" 
+                    src="./public/assets/graphics/logotrans.png" 
                     alt="SQUIRRELVIVOR NUTPOCOLYPSE" 
                     onError={() => setLogoError(true)}
                     className="w-full max-w-md mx-auto md:mx-0 mb-6 object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500"
