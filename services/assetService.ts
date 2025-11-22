@@ -1,7 +1,7 @@
 
 export const assets: { [key: string]: HTMLImageElement } = {};
 
-const createPlaceholderSprite = (type: 'ZOMBIE' | 'ROBOT' | 'ALIEN', color: string): HTMLImageElement => {
+const createPlaceholderSprite = (type: 'ZOMBIE' | 'ROBOT' | 'ALIEN' | 'SQUIRREL', color: string): HTMLImageElement => {
     // LPC Style Sheet Dimensions
     // 13 Columns, 21 Rows. 64x64 tiles.
     const COLS = 13;
@@ -146,6 +146,58 @@ const createPlaceholderSprite = (type: 'ZOMBIE' | 'ROBOT' | 'ALIEN', color: stri
                 ctx.ellipse(-4, -16, 5, 7, 0, 0, Math.PI*2);
                 ctx.fill();
             }
+        } else if (type === 'SQUIRREL') {
+            // --- SQUIRREL ---
+            const fur = color; 
+            const tailColor = color === '#A0AEC0' ? '#718096' : color; // Slightly darker/diff for grey
+
+            // Tail (Big bushy thing)
+            ctx.fillStyle = tailColor;
+            ctx.beginPath();
+            
+            if (direction === 'UP') {
+                 // Tail dominates back view
+                 ctx.ellipse(0, -5, 12, 16, 0, 0, Math.PI*2);
+            } else if (direction === 'DOWN') {
+                 // Tail visible behind/side
+                 ctx.ellipse(8, -8, 10, 14, 0.5, 0, Math.PI*2);
+            } else if (direction === 'RIGHT') {
+                // Tail trailing left
+                ctx.ellipse(-14, -5, 12, 14, -0.3, 0, Math.PI*2);
+            } else if (direction === 'LEFT') {
+                // Tail trailing right
+                ctx.ellipse(14, -5, 12, 14, 0.3, 0, Math.PI*2);
+            }
+            ctx.fill();
+
+            // Legs
+            ctx.fillStyle = fur;
+            ctx.fillRect(-8 - legOffset, 10, 6, 8);
+            ctx.fillRect(2 + legOffset, 10, 6, 8);
+
+            // Body
+            ctx.fillStyle = fur;
+            ctx.fillRect(-10, 0, 20, 12);
+
+            // Head
+            ctx.fillStyle = fur;
+            ctx.beginPath(); ctx.arc(0, -14, 11, 0, Math.PI*2); ctx.fill();
+
+            // Ears
+            ctx.fillStyle = fur;
+            ctx.beginPath(); ctx.moveTo(-6, -20); ctx.lineTo(-10, -30); ctx.lineTo(-2, -24); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(6, -20); ctx.lineTo(10, -30); ctx.lineTo(2, -24); ctx.fill();
+
+            // Eyes & Nose
+            ctx.fillStyle = 'black';
+            if (direction === 'DOWN') {
+                ctx.fillRect(-5, -16, 3, 3); ctx.fillRect(2, -16, 3, 3);
+                ctx.fillStyle = '#pink'; ctx.fillRect(-1, -10, 2, 2);
+            } else if (direction === 'RIGHT') {
+                ctx.fillRect(4, -16, 3, 3);
+            } else if (direction === 'LEFT') {
+                ctx.fillRect(-7, -16, 3, 3);
+            }
         }
         ctx.restore();
     };
@@ -190,7 +242,12 @@ export const loadAssets = async (): Promise<void> => {
   assets['ALIEN'] = createPlaceholderSprite('ALIEN', '#D53F8C');
   assets['SWARM_ZOMBIE'] = assets['ZOMBIE'];
 
-  // 2. Attempt to load external sprites
+  // Generate default placeholders for squirrels so they aren't emojis if loading fails
+  assets['GREY'] = createPlaceholderSprite('SQUIRREL', '#A0AEC0');
+  assets['RED'] = createPlaceholderSprite('SQUIRREL', '#E53E3E');
+  assets['GIANT'] = createPlaceholderSprite('SQUIRREL', '#3E2723');
+
+  // 2. Attempt to load external sprites (overwriting placeholders if successful)
   const spriteMappings = [
     { key: 'ZOMBIE', files: ['zomb_1.png', 'zombie.png'] },
     { key: 'ROBOT', files: ['robot_1.png', 'robot.png'] },

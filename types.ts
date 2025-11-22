@@ -50,6 +50,9 @@ export interface SquirrelCharacter {
   // Base stats that can be modified by permanent upgrades
   magnetRadius?: number;
   maxCompanions?: number; // New stat for Scurry upgrade
+  damageBonus?: number; // Percent (e.g. 0.1 for 10%)
+  cooldownReduction?: number; // Percent (e.g. 0.1 for 10%)
+  revives?: number; // Count
 }
 
 export interface Companion extends Entity {
@@ -84,6 +87,7 @@ export interface Player extends Entity {
   animationFrame: number;
   frameTimer: number;
   maxCompanions?: number; // How many companions allowed
+  revives?: number; // Number of revives remaining
 }
 
 export interface StatusEffect {
@@ -237,7 +241,7 @@ export interface BaseUpgradeDef {
     baseCost: number;
     costMultiplier: number; // How much cost increases per level
     maxLevel: number;
-    statKey: 'hp' | 'speed' | 'magnetRadius' | 'damage' | 'maxCompanions'; // Which stat on character/player it affects
+    statKey: 'hp' | 'speed' | 'magnetRadius' | 'damage' | 'maxCompanions' | 'cooldown' | 'revive'; // Which stat on character/player it affects
     increment: number; // Amount per level
 }
 

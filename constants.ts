@@ -1,4 +1,5 @@
 
+
 import { GameState, Player, Weapon, SquirrelCharacter, StageDuration, BaseUpgradeDef } from './types';
 
 export const CANVAS_WIDTH = window.innerWidth;
@@ -146,6 +147,7 @@ export const INITIAL_PLAYER: Player = {
   animationFrame: 0,
   frameTimer: 0,
   maxCompanions: 0,
+  revives: 0
 };
 
 export const INITIAL_GAME_STATE: GameState = {
@@ -217,13 +219,24 @@ export const BASE_UPGRADES_LIST: BaseUpgradeDef[] = [
     {
         id: 'BASE_DMG',
         name: 'Sharp Teeth',
-        description: 'Permanently increases base Damage (not implemented fully in dmg calcs yet but conceptually here).',
+        description: 'Increases all damage by 10% per level.',
         icon: '🦷',
         baseCost: 100,
         costMultiplier: 1.8,
         maxLevel: 5,
-        statKey: 'damage', // Placeholder, damage logic is in weapons usually
-        increment: 1 
+        statKey: 'damage', 
+        increment: 0.1 // 10%
+    },
+    {
+        id: 'BASE_COOLDOWN',
+        name: 'Hyper Metabolism',
+        description: 'Reduces weapon cooldowns by 5% per level.',
+        icon: '⚡',
+        baseCost: 150,
+        costMultiplier: 1.7,
+        maxLevel: 5,
+        statKey: 'cooldown',
+        increment: 0.05
     },
     {
         id: 'BASE_SCURRY',
@@ -234,6 +247,17 @@ export const BASE_UPGRADES_LIST: BaseUpgradeDef[] = [
         costMultiplier: 2.0,
         maxLevel: 4,
         statKey: 'maxCompanions',
+        increment: 1
+    },
+    {
+        id: 'BASE_REVIVE',
+        name: 'Nine Lives',
+        description: 'Grants a revive on death (Max 3).',
+        icon: '✝️',
+        baseCost: 1000,
+        costMultiplier: 2.5,
+        maxLevel: 3,
+        statKey: 'revive',
         increment: 1
     }
 ];

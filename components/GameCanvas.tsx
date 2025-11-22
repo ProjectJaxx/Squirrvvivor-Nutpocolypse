@@ -11,7 +11,7 @@ import {
 import { ALL_UPGRADES } from '../upgrades';
 import { playSound, playMusic, stopMusic } from '../services/soundService';
 import { assets } from '../services/assetService';
-import { Zap, Shield, Crosshair } from 'lucide-react';
+import { Zap, Shield, Crosshair, Heart } from 'lucide-react';
 
 const shuffle = <T,>(array: T[]): T[] => {
     const newArray = [...array];
@@ -178,8 +178,22 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     state.player.emoji = character.emoji;
     state.player.radius = character.radius;
     state.player.filter = character.filter;
+    state.player.revives = character.revives || 0;
+
     if (character.magnetRadius) state.player.magnetRadius = character.magnetRadius;
     if (character.maxCompanions) state.player.maxCompanions = character.maxCompanions;
+
+    // Apply damage bonus and cooldown reduction to starting weapons
+    if (character.damageBonus) {
+        state.player.weapons.forEach(w => {
+            w.damage = w.damage * (1 + (character.damageBonus || 0));
+        });
+    }
+    if (character.cooldownReduction) {
+        state.player.weapons.forEach(w => {
+            w.cooldown = w.cooldown * (1 - (character.cooldownReduction || 0));
+        });
+    }
     
     state.player.airborneTimer = 0;
     
@@ -1137,7 +1151,36 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   if (state.texts[i].life <= 0) state.texts.splice(i, 1);
               }
 
-              if (p.hp <= 0) onGameOver(state.score, state.time, state.kills, state.collectedNuts, false);
+              if (p.hp <= 0) {
+                  if (p.revives && p.revives > 0) {
+                      p.revives--;
+                      p.hp = p.maxHp * 0.5;
+                      p.invincibleTimer = 180; // 3s invuln
+                      
+                      // Push enemies back
+                      state.enemies.forEach(e => {
+                          const ang = Math.atan2(e.y - p.y, e.x - p.x);
+                          e.x += Math.cos(ang) * 200;
+                          e.y += Math.sin(ang) * 200;
+                      });
+                      
+                      // Explosion effect
+                      state.particles.push({
+                          id: `revive-${Math.random()}`, x: p.x, y: p.y, radius: 100, type: 'EXPLOSION',
+                          color: 'rgba(255, 215, 0, 0.5)', life: 30, maxLife: 30, scale: 1, velocity: {x:0, y:0},
+                      });
+                      
+                      state.texts.push({
+                          id: `revive-txt-${Math.random()}`, x: p.x, y: p.y - 50,
+                          text: "REVIVED!", life: 60, color: '#F6E05E', velocity: {x:0, y:-1}
+                      });
+
+                      if (soundEnabled) playSound('LEVELUP');
+                      triggerShake(10, 30);
+                  } else {
+                      onGameOver(state.score, state.time, state.kills, state.collectedNuts, false);
+                  }
+              }
           }
 
           const state = stateRef.current;
@@ -1647,6 +1690,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           const hpRatio = Math.max(0, state.player.hp) / state.player.maxHp; ctx.fillRect(padding, hpY, barWidth * hpRatio, barHeight);
           ctx.fillStyle = 'white'; ctx.font = `bold ${10 * layout.uiScale}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
           ctx.fillText(`${Math.ceil(state.player.hp)}/${state.player.maxHp}`, padding + barWidth/2, hpY + barHeight/2);
+          
+          // Revive Icon
+          if (state.player.revives && state.player.revives > 0) {
+               const heartSize = 24;
+               const heartX = padding + barWidth + 10;
+               const heartY = hpY - 4;
+               
+               // Simulating Heart Icon
+               ctx.fillStyle = '#E53E3E';
+               ctx.font = `${heartSize}px sans-serif`;
+               ctx.textAlign = 'left';
+               ctx.textBaseline = 'top';
+               ctx.fillText('✝️', heartX, heartY);
+               
+               ctx.fillStyle = 'white';
+               ctx.font = `bold ${12 * layout.uiScale}px monospace`;
+               ctx.fillText(`x${state.player.revives}`, heartX + heartSize + 2, heartY + 6);
+          }
           
           const xpY = hpY + barHeight + 8;
           ctx.fillStyle = '#333'; ctx.fillRect(padding, xpY, barWidth, 8 * layout.uiScale); ctx.fillStyle = '#38B2AC';
