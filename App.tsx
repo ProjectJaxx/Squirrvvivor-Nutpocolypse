@@ -8,7 +8,8 @@ import { SettingsMenu } from './components/SettingsMenu';
 import { SaveSlots } from './components/SaveSlots';
 import { PauseMenu } from './components/PauseMenu';
 import { BaseUpgrades } from './components/BaseUpgrades';
-import { AppState, Upgrade, SquirrelCharacter, SaveSlot, StageDuration } from './types';
+import { StageClear } from './components/StageClear';
+import { AppState, Upgrade, SquirrelCharacter, SaveSlot, StageDuration, Player } from './types';
 import { SQUIRREL_CHARACTERS, BASE_UPGRADES_LIST } from './constants';
 import { updateSlotStats } from './services/storageService';
 import { loadAssets } from './services/assetService';
@@ -28,6 +29,10 @@ const App: React.FC = () => {
   const [finalKills, setFinalKills] = useState(0);
   const [finalNuts, setFinalNuts] = useState(0);
   const [gameWon, setGameWon] = useState(false);
+  
+  // Staging Logic
+  const [currentStage, setCurrentStage] = useState(1);
+  const [runPlayer, setRunPlayer] = useState<Player | undefined>(undefined);
   
   const [availableUpgrades, setAvailableUpgrades] = useState<Upgrade[]>([]);
   const [onUpgradeSelect, setOnUpgradeSelect] = useState<(u: Upgrade) => void>(() => {});
@@ -95,16 +100,43 @@ const App: React.FC = () => {
   const startGame = () => {
     setGameActive(true);
     setAppState('GAME');
+    
+    // Reset run stats
     setFinalScore(0);
     setFinalTime(0);
     setFinalKills(0);
     setFinalNuts(0);
     setGameWon(false);
+    setCurrentStage(1);
+    setRunPlayer(undefined); // Start fresh
   };
 
   const quitGame = () => {
     setGameActive(false);
     setAppState('MENU');
+    setRunPlayer(undefined);
+    setCurrentStage(1);
+  };
+
+  const handleStageComplete = (player: Player, score: number, kills: number, nuts: number) => {
+      setRunPlayer(player); // Save player state
+      setFinalScore(score);
+      setFinalKills(kills);
+      setFinalNuts(nuts);
+      // Unmount game temporarily to show stage clear screen
+      setGameActive(false); 
+      setAppState('STAGE_CLEAR');
+  };
+
+  const continueToNextStage = () => {
+      setCurrentStage(prev => prev + 1);
+      setGameActive(true); // Re-mount GameCanvas with new stage prop and initialPlayer
+      setAppState('GAME');
+  };
+
+  const extractFromRun = () => {
+      // Treat as a win, save stats
+      handleGameOver(finalScore, 180 * 60 * currentStage, finalKills, finalNuts, true);
   };
 
   const handleGameOver = (score: number, timeSurvived: number, kills: number, nuts: number, won: boolean) => {
@@ -115,14 +147,17 @@ const App: React.FC = () => {
     setFinalNuts(nuts);
     setGameWon(won);
     setAppState('GAME_OVER');
+    setRunPlayer(undefined);
     
     if (currentSlot) {
-        const estimatedWave = Math.floor(timeSurvived / 60) + 1; // approx
+        // Accumulate total time across stages roughly
+        const totalTime = (180 * 60 * (currentStage - 1)) + timeSurvived;
+        const estimatedWave = Math.floor(totalTime / 60) + 1; 
         const updated = updateSlotStats(currentSlot.id, {
             score,
-            time: Math.floor(timeSurvived / 60),
+            time: Math.floor(totalTime / 60),
             kills,
-            wave: estimatedWave,
+            wave: currentStage * 5, // Approximate deep wave count
             nuts
         });
         if (updated) setCurrentSlot(updated);
@@ -159,10 +194,14 @@ const App: React.FC = () => {
       {gameActive && (
         <div className={appState === 'SETTINGS' ? 'hidden' : ''}>
             <GameCanvas 
+              key={`stage-${currentStage}`} // Force remount on stage change to init state properly
               onGameOver={handleGameOver} 
+              onStageComplete={handleStageComplete}
               onLevelUp={handleLevelUp}
               paused={appState !== 'GAME'}
-              character={effectiveCharacter} // Use modified character with perm upgrades
+              character={effectiveCharacter} // Used for base visual init
+              initialPlayer={runPlayer} // Used for stats hydration on stage 2+
+              stageNumber={currentStage}
               soundEnabled={soundEnabled}
               musicEnabled={musicEnabled}
               stageDuration={stageDuration}
@@ -196,6 +235,17 @@ const App: React.FC = () => {
             slot={currentSlot} 
             onBack={() => setAppState('MENU')}
             onUpdateSlot={setCurrentSlot}
+          />
+      )}
+
+      {appState === 'STAGE_CLEAR' && (
+          <StageClear 
+            stage={currentStage}
+            score={finalScore}
+            kills={finalKills}
+            nuts={finalNuts}
+            onContinue={continueToNextStage}
+            onExtract={extractFromRun}
           />
       )}
       

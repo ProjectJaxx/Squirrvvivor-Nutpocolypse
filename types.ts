@@ -1,6 +1,6 @@
 
 
-export type AppState = 'LOADING' | 'MENU' | 'GAME' | 'LEVEL_UP' | 'GAME_OVER' | 'SETTINGS' | 'SAVE_SELECT' | 'PAUSED' | 'BASE_UPGRADES';
+export type AppState = 'LOADING' | 'MENU' | 'GAME' | 'LEVEL_UP' | 'GAME_OVER' | 'SETTINGS' | 'SAVE_SELECT' | 'PAUSED' | 'BASE_UPGRADES' | 'STAGE_CLEAR';
 
 export interface Vector {
   x: number;
@@ -156,7 +156,7 @@ export interface Obstacle extends Entity {
     rotation: number;
     material: 'WOOD' | 'STONE' | 'METAL' | 'CRYSTAL' | 'FLESH';
     isCover?: boolean;
-    subtype?: 'TREE' | 'ROCK' | 'BENCH' | 'CAR' | 'CRYSTAL' | 'WALL' | 'GEYSER' | 'PUDDLE';
+    subtype?: 'TREE' | 'ROCK' | 'BENCH' | 'CAR' | 'CRYSTAL' | 'WALL' | 'GEYSER' | 'PUDDLE' | 'LOG';
     // Distinct properties
     explosive?: boolean;
     explodeDamage?: number;
@@ -257,9 +257,12 @@ export interface SettingsMenuProps {
 
 export interface GameCanvasProps {
   onGameOver: (score: number, time: number, kills: number, nuts: number, won: boolean) => void;
+  onStageComplete: (player: Player, score: number, kills: number, nuts: number) => void;
   onLevelUp: (upgrades: Upgrade[], onSelect: (u: Upgrade) => void) => void;
   paused: boolean;
   character: SquirrelCharacter;
+  initialPlayer?: Player; // If present, resume run with this state
+  stageNumber: number;
   soundEnabled: boolean;
   musicEnabled: boolean;
   stageDuration: StageDuration;
