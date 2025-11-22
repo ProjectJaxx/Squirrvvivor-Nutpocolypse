@@ -66,6 +66,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const stateRef = useRef<GameState>(JSON.parse(JSON.stringify(INITIAL_GAME_STATE)));
   const inputRef = useRef({ up: false, down: false, left: false, right: false, sprint: false, ability: false });
   const bgPatternRef = useRef<CanvasPattern | null>(null);
+  
+  // Prevent multiple triggers
+  const isLevelingUpRef = useRef(false);
 
   const touchRef = useRef<{
     joyId: number | null;
@@ -428,6 +431,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         stopMusic();
     }
   }, [character, musicEnabled, stageNumber, initialPlayer]);
+
+  // Reset LevelUp ref when unpaused
+  useEffect(() => {
+      if (!paused) {
+          isLevelingUpRef.current = false;
+      }
+  }, [paused]);
 
   // ... (Existing Key Event Listeners remain same) ...
   useEffect(() => {
@@ -1313,7 +1323,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                               });
                           }
 
-                          if (p.xp >= p.nextLevelXp) {
+                          if (p.xp >= p.nextLevelXp && !isLevelingUpRef.current) {
+                              isLevelingUpRef.current = true; // Lock
                               p.level++; p.xp -= p.nextLevelXp; p.nextLevelXp = Math.floor(p.nextLevelXp * 1.5);
                               if (soundEnabled) playSound('LEVELUP');
                               
