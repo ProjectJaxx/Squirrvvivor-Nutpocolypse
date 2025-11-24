@@ -1,9 +1,11 @@
 
 import React, { useEffect, useState } from 'react';
-import { Play, Settings as SettingsIcon, Save, Palette, Hammer, Zap } from 'lucide-react';
+import { Play, Settings as SettingsIcon, Save, Hammer } from 'lucide-react';
 import { generateLore } from '../services/geminiService';
 import { SQUIRREL_CHARACTERS } from '../constants';
 import { SquirrelCharacter, SaveSlot } from '../types';
+import { GameLogo } from './GameLogo';
+import { Zap } from 'lucide-react';
 
 interface MainMenuProps {
   onStart: () => void;
@@ -17,8 +19,6 @@ interface MainMenuProps {
 
 export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseUpgrades, selectedCharacter, onSelectCharacter, currentSlot, onSwitchSlot }) => {
   const [lore, setLore] = useState<string>("Loading arcane squirrel wisdom...");
-  const [logoError, setLogoError] = useState(false);
-  const [bgError, setBgError] = useState(false);
 
   useEffect(() => {
     generateLore().then(setLore);
@@ -27,17 +27,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseU
   return (
     <div className="absolute inset-0 bg-gray-900 flex flex-col items-center justify-center overflow-hidden">
       
-      {/* Background - Single large logo image */}
-      <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-20">
-         {!bgError && (
-             <img 
-                src="./public/assets/graphics/logo.png"
-                alt=""
-                onError={() => setBgError(true)}
-                className="w-[80vw] h-[80vw] max-w-[800px] max-h-[800px] object-contain animate-pulse" 
-                style={{ animationDuration: '8s' }}
-             />
-         )}
+      {/* Background - Huge Vector Logo Opacity */}
+      <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-10 scale-150">
+         <GameLogo className="w-[80vw] h-[80vw]" />
       </div>
       
       {currentSlot && (
@@ -59,21 +51,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({ onStart, onSettings, onBaseU
         
         {/* Left: Title and Controls */}
         <div className="flex-1 flex flex-col items-center md:items-start w-full">
-            {!logoError ? (
-                <img 
-                    src="./public/assets/graphics/logotrans.png" 
-                    alt="SQUIRRELVIVOR NUTPOCOLYPSE" 
-                    onError={() => setLogoError(true)}
-                    className="w-full max-w-xs md:max-w-sm mx-auto md:mx-0 mb-6 object-contain drop-shadow-2xl hover:scale-105 transition-transform duration-500"
-                />
-            ) : (
-                <div className="mb-6 text-center md:text-left">
-                    <h1 className="text-4xl md:text-6xl font-bold text-amber-500 pixel-font leading-tight">
-                        SQUIRREL<span className="text-white">VIVOR</span>
-                    </h1>
-                    <h2 className="text-xl md:text-2xl font-bold text-red-500 tracking-widest">NUTPOCOLYPSE</h2>
-                </div>
-            )}
+            
+            {/* SVG Logo Component Replacement */}
+            <div className="mb-8 w-full flex flex-col items-center md:items-start hover:scale-105 transition-transform duration-500">
+                <GameLogo className="w-48 h-48 md:w-64 md:h-64" showText={true} />
+            </div>
 
             {currentSlot && (
                 <div className="flex gap-4 mb-4 text-sm w-full bg-gray-900/50 p-2 rounded border border-gray-700 justify-center md:justify-start">

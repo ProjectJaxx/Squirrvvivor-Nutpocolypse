@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef } from 'react';
 import { 
     GameCanvasProps, GameState, Entity, Player, Enemy, Projectile, 
@@ -22,32 +21,48 @@ const shuffle = <T,>(array: T[]): T[] => {
 };
 
 const getUILayout = (width: number, height: number) => {
-    const isMobile = width < 800;
-    const uiScale = isMobile ? 1.3 : 1.0; 
-    
-    const safeMarginX = isMobile ? 40 : 20;
-    const safeMarginY = isMobile ? 40 : 20; 
+    // Define base dimensions for a reference 16:9 aspect ratio.
+    const BASE_WIDTH = 1600;
+    const BASE_HEIGHT = 900;
 
-    const pauseSize = 40 * uiScale;
-    
-    // Sprint Button (Main Action - Bottom Right)
-    const sprintRadius = isMobile ? 60 : 45;
-    const sprintX = width - safeMarginX - sprintRadius;
-    const sprintY = height - safeMarginY - sprintRadius;
+    // Calculate scale factors for both width and height.
+    const scaleX = width / BASE_WIDTH;
+    const scaleY = height / BASE_HEIGHT;
 
-    // Ability Button (Secondary Action - To the left of Sprint in an arc)
-    const abilityRadius = isMobile ? 50 : 35;
-    // Offset relative to sprint to form a natural thumb arc
-    const abilityX = sprintX - (isMobile ? 130 : 100);
-    const abilityY = sprintY + (isMobile ? 30 : 10); 
+    // Use the smaller of the two scale factors to ensure the UI fits on screen ('contain' scaling).
+    // Clamps prevent the UI from becoming too small or excessively large on extreme resolutions.
+    const uiScale = Math.max(0.6, Math.min(scaleX, scaleY, 1.8));
+
+    // Define base sizes and scale them proportionally
+    const safeMargin = 25 * uiScale;
+    const pauseSize = 45 * uiScale;
+    
+    const sprintRadius = 55 * uiScale;
+    const abilityRadius = 45 * uiScale;
+    
+    const joyBaseRadius = 70 * uiScale;
+    const joyStickRadius = 35 * uiScale;
+    const joyMaxDist = 80 * uiScale;
+
+    // Positions are calculated based on screen edges and scaled dimensions
+    const sprintX = width - safeMargin - sprintRadius;
+    const sprintY = height - safeMargin - sprintRadius;
+
+    // Offset ability button relative to sprint button for ergonomic thumb placement
+    const abilityX = sprintX - (120 * uiScale);
+    const abilityY = sprintY + (10 * uiScale); 
+
+    // The isMobile flag is retained for logic that isn't purely visual scaling (e.g., touch input detection)
+    const isMobile = width < 800 || height < 600;
 
     return {
         isMobile,
         uiScale,
-        pause: { x: width - safeMarginX - pauseSize, y: safeMarginY, w: pauseSize, h: pauseSize },
-        // Generous hit boxes
-        sprint: { x: sprintX, y: sprintY, r: sprintRadius, hitR: sprintRadius * 1.4 },
-        ability: { x: abilityX, y: abilityY, r: abilityRadius, hitR: abilityRadius * 1.4 }
+        safeMargin,
+        pause: { x: width - safeMargin - pauseSize, y: safeMargin, w: pauseSize, h: pauseSize },
+        sprint: { x: sprintX, y: sprintY, r: sprintRadius, hitR: sprintRadius * 1.5 },
+        ability: { x: abilityX, y: abilityY, r: abilityRadius, hitR: abilityRadius * 1.5 },
+        joystick: { baseRadius: joyBaseRadius, stickRadius: joyStickRadius, maxDist: joyMaxDist }
     };
 };
 
@@ -260,7 +275,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   useEffect(() => {
     // PRELOAD NUT LOGO
     const img = new Image();
-    img.src = './public/assets/graphics/logo.png';
+    // Using SVG for crisp scaling of projectiles
+    img.src = './public/assets/graphics/logotrans.svg';
     img.onload = () => {
         nutImageRef.current = img;
     };
@@ -608,7 +624,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               if (inputRef.current.right) dx += 1;
 
               if (touchRef.current.joyId !== null) {
-                  const maxDist = layout.isMobile ? 100 : 75; 
+                  const maxDist = layout.joystick.maxDist; 
                   const deadZone = 10; 
                   const jx = touchRef.current.joyCurX - touchRef.current.joyStartX;
                   const jy = touchRef.current.joyCurY - touchRef.current.joyStartY;
@@ -945,6 +961,38 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               const enemyCount = state.enemies.length;
               for (let i=0; i<enemyCount; i++) {
                   const e = state.enemies[i];
+
+                  // Decrement hit flash timer
+                  if (e.hitFlashTimer && e.hitFlashTimer > 0) {
+                      e.hitFlashTimer--;
+                  }
+                  
+                  // Apply and decay knockback
+                  if (e.knockback.x !== 0 || e.knockback.y !== 0) {
+                      const nextX = e.x + e.knockback.x;
+                      const nextY = e.y + e.knockback.y;
+                      const b = state.mapBounds;
+                      let canMoveX = nextX >= b.minX + e.radius && nextX <= b.maxX - e.radius;
+                      let canMoveY = nextY >= b.minY + e.radius && nextY <= b.maxY - e.radius;
+                      
+                      for (const obs of state.obstacles) {
+                          if (obs.subtype === 'PUDDLE' || obs.subtype === 'GEYSER') continue; 
+                          if (checkObstacleCollision(nextX, e.y, e.radius, obs)) canMoveX = false;
+                          if (checkObstacleCollision(e.x, nextY, e.radius, obs)) canMoveY = false;
+                      }
+
+                      if (canMoveX) e.x += e.knockback.x;
+                      if (canMoveY) e.y += e.knockback.y;
+
+                      e.knockback.x *= 0.8; // Stronger friction for snappier recoil
+                      e.knockback.y *= 0.8;
+
+                      if (Math.hypot(e.knockback.x, e.knockback.y) < 0.1) {
+                          e.knockback.x = 0;
+                          e.knockback.y = 0;
+                      }
+                  }
+
                   let speedMod = 1;
                   
                   e.statusEffects = e.statusEffects.filter(ef => ef.duration > 0);
@@ -1118,6 +1166,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                 for (const e of state.enemies) {
                                     if (Math.hypot(e.x - cx, e.y - cy) < e.radius + crowRadius) {
                                         e.hp -= w.damage;
+                                        e.hitFlashTimer = 5; // Short flash for DoT
                                         state.texts.push({
                                             id: `crow-${Math.random()}`, x: e.x, y: e.y, text: `${Math.round(w.damage)}`,
                                             life: 15, color: '#D53F8C', velocity: {x:0, y:-1}
@@ -1129,9 +1178,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                             color: w.damage > 15 ? '#6B46C1' : '#D53F8C' 
                                         });
                                         
-                                        const kAngle = Math.atan2(e.y - p.y, e.x - p.x);
-                                        e.x += Math.cos(kAngle) * 3;
-                                        e.y += Math.sin(kAngle) * 3;
+                                        const knockbackStrength = 2;
+                                        const kAngle = Math.atan2(e.y - cy, e.x - cx);
+                                        e.knockback.x += Math.cos(kAngle) * knockbackStrength;
+                                        e.knockback.y += Math.sin(kAngle) * knockbackStrength;
 
                                         hit = true;
                                     }
@@ -1261,11 +1311,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                                          damageDealt = 0;
                                          state.texts.push({ id: `shield-${Math.random()}`, x: e.x, y: e.y - 15, text: "SHIELD", life: 20, color: '#63B3ED', velocity: {x:0, y:-1}});
                                      }
+                                     e.hitFlashTimer = 5;
                                  }
                                  
                                  if (damageDealt > 0) {
                                     e.hp -= damageDealt;
                                     state.texts.push({ id: `txt-${Math.random()}`, x: e.x, y: e.y, text: `${Math.round(damageDealt)}`, life: 30, color: '#fff', velocity: {x:0, y:-1}});
+                                    e.hitFlashTimer = 10;
+                                    const knockbackStrength = proj.type === 'NUT_SHELL' ? 4 : 8;
+                                    const angle = Math.atan2(e.y - proj.y, e.x - proj.x);
+                                    e.knockback.x += Math.cos(angle) * knockbackStrength;
+                                    e.knockback.y += Math.sin(angle) * knockbackStrength;
                                  }
 
                                  if (!proj.hitIds) proj.hitIds = [];
@@ -1290,9 +1346,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                           for (const e of state.enemies) {
                               if (Math.hypot(e.x - proj.x, e.y - proj.y) < proj.explodeRadius) {
                                   e.hp -= proj.damage; 
+                                  e.hitFlashTimer = 15;
                                   const ang = Math.atan2(e.y - proj.y, e.x - proj.x);
-                                  e.x += Math.cos(ang) * 10;
-                                  e.y += Math.sin(ang) * 10;
+                                  const knockbackStrength = 12;
+                                  e.knockback.x += Math.cos(ang) * knockbackStrength;
+                                  e.knockback.y += Math.sin(ang) * knockbackStrength;
                               }
                           }
 
@@ -1876,7 +1934,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 case 'PLAYER': { const p = e as Player; drawVectorSquirrel(p.radius, p.color, p.facing, p.animationState, p.frameTimer); break; }
                 case 'COMPANION': { const c = e as Companion; const facing = state.player.x < c.x ? 'LEFT' : 'RIGHT'; drawVectorSquirrel(c.radius, c.color, facing, 'WALKING', state.time + parseInt(c.id.split('-')[1])*100, true); break; }
                 case 'SWARM_ZOMBIE': case 'ZOMBIE': case 'ROBOT': case 'ALIEN': case 'BRUTE_ZOMBIE': case 'RUNNER_ZOMBIE': case 'SHIELD_ZOMBIE': case 'BOSS_ROBOT': case 'GHOST': case 'TANK_BOT': case 'MARTIAN_SPIDER': { 
-                    drawVectorEnemy(e as Enemy, state.time + parseFloat(e.id.split('-')[2] || '0')*10); break; 
+                    const enemy = e as Enemy;
+                    // Apply flash effect if timer is active
+                    if (enemy.hitFlashTimer && enemy.hitFlashTimer > 0) {
+                        ctx.save();
+                        const flashIntensity = 1 + (enemy.hitFlashTimer / 10) * 1.5; // brightness from 250% down to 100%
+                        ctx.filter = `brightness(${flashIntensity * 100}%) contrast(120%)`;
+                    }
+                    
+                    drawVectorEnemy(e as Enemy, state.time + parseFloat(e.id.split('-')[2] || '0')*10); 
+
+                    // Reset filter
+                    if (enemy.hitFlashTimer && enemy.hitFlashTimer > 0) {
+                        ctx.restore();
+                    }
+                    break; 
                 }
                 case 'OBSTACLE': drawVectorObstacle(e as Obstacle); break;
                 case 'NUT_SHELL': 
@@ -1928,9 +2000,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           if (touchRef.current.joyId !== null) {
               const { joyStartX, joyStartY, joyCurX, joyCurY } = touchRef.current;
               ctx.save(); ctx.globalAlpha = 0.6;
-              ctx.beginPath(); ctx.arc(joyStartX, joyStartY, 60 * layout.uiScale, 0, Math.PI * 2);
-              const grad = ctx.createRadialGradient(joyStartX, joyStartY, 10, joyStartX, joyStartY, 60 * layout.uiScale); grad.addColorStop(0, 'rgba(255, 255, 255, 0.1)'); grad.addColorStop(1, 'rgba(255, 255, 255, 0.3)'); ctx.fillStyle = grad; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.stroke();
-              ctx.beginPath(); ctx.arc(joyCurX, joyCurY, 30 * layout.uiScale, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'; ctx.fill(); ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 5; ctx.restore();
+              ctx.beginPath(); ctx.arc(joyStartX, joyStartY, layout.joystick.baseRadius, 0, Math.PI * 2);
+              const grad = ctx.createRadialGradient(joyStartX, joyStartY, 10, joyStartX, joyStartY, layout.joystick.baseRadius); grad.addColorStop(0, 'rgba(255, 255, 255, 0.1)'); grad.addColorStop(1, 'rgba(255, 255, 255, 0.3)'); ctx.fillStyle = grad; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.stroke();
+              ctx.beginPath(); ctx.arc(joyCurX, joyCurY, layout.joystick.stickRadius, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'; ctx.fill(); ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 5; ctx.restore();
           }
           
           // Buttons
@@ -2008,8 +2080,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.restore();
 
           // Stats UI
-          const padding = 20;
-          const barWidth = layout.isMobile ? width * 0.3 : 200;
+          const padding = layout.safeMargin;
+          const barWidth = Math.min(width * 0.35, 300 * layout.uiScale);
           const barHeight = 14 * layout.uiScale;
           
           ctx.shadowColor = 'black'; ctx.shadowBlur = 2; ctx.fillStyle = 'white'; 
@@ -2035,7 +2107,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           // BOSS HEALTH BAR
           const activeBoss = state.enemies.find(e => e.type === 'BOSS_ZOMBIE' || e.type === 'BOSS_ROBOT' || e.type === 'BOSS_ALIEN');
           if (activeBoss) {
-              const bossBarWidth = Math.min(width * 0.6, 600);
+              const bossBarWidth = Math.min(width * 0.7, 600 * layout.uiScale);
               const bossBarHeight = 20 * layout.uiScale;
               const barX = (width - bossBarWidth) / 2;
               const barY = 80 * layout.uiScale; // Positioned below timer
@@ -2090,11 +2162,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           // Revives
           if (state.player.revives && state.player.revives > 0) {
                ctx.textAlign = 'left'; ctx.font = `${16 * layout.uiScale}px sans-serif`; 
-               ctx.fillText(`✝️${state.player.revives}`, padding + barWidth + 5, hpY + barHeight/2);
+               ctx.fillText(`✝️${state.player.revives}`, padding + barWidth + (5 * layout.uiScale), hpY + barHeight/2);
           }
 
           // XP Bar
-          const xpY = hpY + barHeight + 5;
+          const xpY = hpY + barHeight + (5 * layout.uiScale);
           ctx.fillStyle = '#333'; ctx.fillRect(padding, xpY, barWidth, 6 * layout.uiScale);
           ctx.fillStyle = '#38B2AC'; const xpRatio = state.player.xp / state.player.nextLevelXp;
           ctx.fillRect(padding, xpY, barWidth * xpRatio, 6 * layout.uiScale);

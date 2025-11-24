@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+    <defs>
+        <radialGradient id="grad1" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+            <stop offset="0%" style="stop-color:rgb(245, 158, 11);stop-opacity:1" />
+            <stop offset="100%" style="stop-color:rgb(209, 103, 4);stop-opacity:1" />
+        </radialGradient>
+    </defs>
+    <!-- Nut -->
+    <path d="M 50,20 C 30,20 30,50 40,60 C 30,70 30,90 50,90 C 70,90 70,70 60,60 C 70,50 70,20 50,20 Z" fill="url(#grad1)" stroke="#5D4037" stroke-width="3"/>
+    <path d="M 50,20 C 55,25 45,25 50,20" fill="#A1887F" />
+    <!-- Squirrel Body -->
+    <path d="M 65,85 C 50,95 40,80 45,65 C 50,50 70,50 75,65 C 80,80 80,95 65,85 Z" fill="#A1887F" stroke="#3E2723" stroke-width="2"/>
+    <!-- Squirrel Head -->
+    <circle cx="78" cy="60" r="10" fill="#A1887F" stroke="#3E2723" stroke-width="2"/>
+    <circle cx="82" cy="58" r="2" fill="black"/>
+    <path d="M 78,52 C 75,48 83,48 81,52" fill="#A1887F" stroke="#3E2723" stroke-width="1.5"/>
+    <path d="M 81,52 C 78,48 86,48 84,52" fill="#A1887F" stroke="#3E2723" stroke-width="1.5"/>
+    <!-- Tail -->
+    <path d="M 55,80 C 30,80 20,40 50,30 C 60,20 80,30 70,55" fill="none" stroke="#A1887F" stroke-width="12" stroke-linecap="round"/>
+    <path d="M 55,80 C 30,80 20,40 50,30 C 60,20 80,30 70,55" fill="none" stroke="#6D4C41" stroke-width="6" stroke-linecap="round"/>
+</svg>

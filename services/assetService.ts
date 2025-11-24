@@ -1,7 +1,6 @@
-
 export const assets: { [key: string]: HTMLImageElement } = {};
 
-// Helper to satisfy type signature if needed, though we don't load images anymore
+// Helper to satisfy type signature if needed
 const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
         const img = new Image();
@@ -12,8 +11,14 @@ const loadImage = (src: string): Promise<HTMLImageElement> => {
 };
 
 export const loadAssets = async (): Promise<void> => {
-  // No-op: Vector engine requires no external assets.
-  // We resolve immediately to start the game.
+  // This is intentionally a no-op.
+  // The game uses a procedural vector rendering engine, so most visuals
+  // are drawn programmatically on the canvas without needing to load
+  // external sprite sheets. We resolve immediately to start the game.
+  
+  // Example of loading an asset if needed in the future:
+  // assets['NUT_LOGO'] = await loadImage('./public/assets/graphics/logotrans.svg');
+  
   return Promise.resolve();
 };
 

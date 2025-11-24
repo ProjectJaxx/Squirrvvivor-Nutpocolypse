@@ -5,6 +5,7 @@ import { BASE_UPGRADES_LIST } from '../constants';
 import { purchaseUpgrade } from '../services/storageService';
 import { playSound } from '../services/soundService';
 import { ArrowLeft, Hammer, CheckCircle2, ChevronRight } from 'lucide-react';
+import { GameLogo } from './GameLogo';
 
 interface BaseUpgradesProps {
     slot: SaveSlot;
@@ -14,7 +15,6 @@ interface BaseUpgradesProps {
 
 export const BaseUpgrades: React.FC<BaseUpgradesProps> = ({ slot, onBack, onUpdateSlot }) => {
     const [purchasingId, setPurchasingId] = useState<string | null>(null);
-    const [imgError, setImgError] = useState(false);
 
     const handleBuy = (upgradeId: string) => {
         setPurchasingId(upgradeId);
@@ -52,17 +52,7 @@ export const BaseUpgrades: React.FC<BaseUpgradesProps> = ({ slot, onBack, onUpda
 
             <div className="flex-1 w-full max-w-5xl overflow-y-auto p-4 md:p-8 pb-24">
                 <div className="text-center mb-8 flex flex-col items-center">
-                    {!imgError ? (
-                        <img 
-                            src="./public/assets/graphics/logo.png" 
-                            alt="Acorn Armory" 
-                            onError={() => setImgError(true)}
-                            className="w-20 h-20 mb-4 object-contain drop-shadow-lg animate-bounce"
-                            style={{ animationDuration: '3s' }}
-                        />
-                    ) : (
-                        <div className="text-6xl mb-4 animate-bounce">🛡️</div>
-                    )}
+                    <GameLogo className="w-20 h-20 mb-4 animate-bounce" style={{ animationDuration: '3s' }} />
                     <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-br from-amber-300 to-orange-500 mb-2 pixel-font drop-shadow-sm">
                         ACORN ARMORY
                     </h1>
