@@ -86,7 +86,14 @@ const createGroundPattern = (biome: string, ctx: CanvasRenderingContext2D) => {
 };
 
 interface ExtendedGameCanvasProps extends GameCanvasProps {
-    onStatsUpdate?: (stats: { score: number, kills: number, nuts: number, time: number, player: Player }) => void;
+    onStatsUpdate?: (stats: { 
+        score: number, 
+        kills: number, 
+        nuts: number, 
+        time: number, 
+        player: Player,
+        boss?: { name: string, hp: number, maxHp: number, color: string } | null
+    }) => void;
 }
 
 export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
@@ -315,12 +322,36 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
                 // Sync Stats to HUD and UI elements less frequently (every 5 frames = ~12fps update)
                 if (currentState.time % 5 === 0) {
                     if (onStatsUpdate) {
+                        // Identify Boss for UI
+                        const activeBoss = currentState.enemies.find(e => 
+                            e.type === 'BRUTE_ZOMBIE' || 
+                            e.type === 'TANK_BOT' || 
+                            e.type === 'BOSS_ALIEN' || 
+                            e.type.startsWith('BOSS')
+                        );
+                        
+                        let bossData = null;
+                        if (activeBoss) {
+                            let name = 'BOSS';
+                            if (activeBoss.type === 'BRUTE_ZOMBIE') name = 'ROTTEN BEHEMOTH';
+                            else if (activeBoss.type === 'TANK_BOT') name = 'DOOM TRACKER';
+                            else if (activeBoss.type === 'BOSS_ALIEN') name = 'MIND FLAYER SAUCER';
+                            
+                            bossData = {
+                                name,
+                                hp: activeBoss.hp,
+                                maxHp: activeBoss.maxHp,
+                                color: activeBoss.color
+                            };
+                        }
+
                         onStatsUpdate({
                             score: currentState.score,
                             kills: currentState.kills,
                             nuts: currentState.collectedNuts,
                             time: currentState.time,
-                            player: currentState.player
+                            player: currentState.player,
+                            boss: bossData
                         });
                     }
                     
@@ -714,6 +745,15 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
             if (enemy.hitFlashTimer && enemy.hitFlashTimer > 0) enemy.hitFlashTimer--;
             if (enemy.attackTimer && enemy.attackTimer > 0) enemy.attackTimer--;
 
+            // Update Animation Frame
+            // Cycle roughly every 5-6 game frames for 10-12fps animation look
+            enemy.frameTimer++;
+            if (enemy.frameTimer >= 6) {
+                enemy.frameTimer = 0;
+                // LPC walk cycles usually 8-9 frames. Let's cycle 0-7
+                enemy.animationFrame = (enemy.animationFrame + 1) % 8; 
+            }
+
             if (Math.abs(enemy.knockback.x) > 0.1 || Math.abs(enemy.knockback.y) > 0.1) {
                 enemy.x += enemy.knockback.x;
                 enemy.y += enemy.knockback.y;
@@ -730,7 +770,10 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
                     const effectiveSpeed = enemy.speed * (enemy.speedMultiplier || 1);
                     enemy.x += Math.cos(angle) * effectiveSpeed;
                     enemy.y += Math.sin(angle) * effectiveSpeed;
-                    enemy.facing = (player.x > enemy.x) ? 'RIGHT' : 'LEFT';
+                    
+                    // Simple 2-way facing logic based on X velocity
+                    if (player.x > enemy.x) enemy.facing = 'RIGHT';
+                    else enemy.facing = 'LEFT';
                 }
             }
             
@@ -1232,30 +1275,7 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
                         });
 
                         if (e.hp <= 0) {
-                            state.enemies.splice(j, 1);
-                            state.kills++;
-                            state.score += e.isElite ? 100 : 10;
-                            // Increased XP Drops: 25 for normal, 250 for elite
-                            state.drops.push({
-                                id: `d-${Date.now()}`,
-                                x: e.x, y: e.y,
-                                radius: 8, // Increased from 5
-                                type: 'DROP',
-                                color: '#4299e1',
-                                kind: 'XP',
-                                value: e.isElite ? 250 : 25
-                            });
-                            if (Math.random() < (e.isElite ? 0.8 : 0.1)) {
-                                state.drops.push({
-                                    id: `n-${Date.now()}`,
-                                    x: e.x + 5, y: e.y,
-                                    radius: 8, // Increased from 6
-                                    type: 'DROP',
-                                    color: '#d69e2e',
-                                    kind: 'GOLD',
-                                    value: e.isElite ? 10 : 1
-                                });
-                            }
+                            // Enemy death handled in separate loop for cleanup
                         }
 
                         if (p.pierce <= 0 && p.type !== 'CROW') {
@@ -1329,18 +1349,64 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
             }
         }
         
-        // Enemy Death Cleanup
+        // Enemy Death Cleanup & FX
         for (let i = state.enemies.length - 1; i >= 0; i--) {
             const e = state.enemies[i];
             if (e.hp <= 0) {
+                // --- DEATH EFFECTS ---
+                let particleSubtype = 'DEFAULT';
+                let particleColor = '#aaaaaa';
+                let particleCount = 6;
+                let particleSpeed = 3;
+
+                if (['ROBOT', 'CYBER_HOUND', 'TANK_BOT', 'BOSS_ROBOT'].includes(e.type)) {
+                    particleSubtype = 'SCRAP';
+                    particleColor = '#A0AEC0'; // Metal grey
+                    particleCount = 10;
+                    particleSpeed = 5; // Explodes faster
+                } else if (['ZOMBIE', 'RUNNER_ZOMBIE', 'BRUTE_ZOMBIE', 'BOSS_ZOMBIE'].includes(e.type)) {
+                    particleSubtype = 'GOO';
+                    particleColor = '#48BB78'; // Slime green
+                    particleCount = 8;
+                    particleSpeed = 2; // Oozes slower
+                } else if (['ALIEN', 'MARTIAN_SPIDER', 'BOSS_ALIEN'].includes(e.type)) {
+                    particleSubtype = 'DISINTEGRATE';
+                    particleColor = '#D53F8C'; // Pink/Purple energy
+                    particleCount = 12;
+                    particleSpeed = 1.5; // Dissolves upward
+                }
+
+                // Spawn Particles
+                for(let k=0; k<particleCount; k++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * particleSpeed + 1;
+                    state.particles.push({
+                        id: `death-${Date.now()}-${k}`,
+                        x: e.x, y: e.y,
+                        radius: Math.random() * 4 + 3,
+                        type: 'SMOKE', // Using standard type container but drawing differently
+                        subtype: particleSubtype as any, 
+                        color: particleColor,
+                        velocity: { 
+                            x: Math.cos(angle) * speed, 
+                            y: Math.sin(angle) * speed 
+                        },
+                        life: 30 + Math.random() * 20, 
+                        maxLife: 50, 
+                        scale: 1,
+                        drift: particleSubtype === 'DISINTEGRATE' ? {x: 0, y: -1} : undefined // Aliens float up
+                    });
+                }
+
                 state.enemies.splice(i, 1);
                 state.kills++;
                 state.score += e.isElite ? 100 : 10;
-                // Increased XP Drops: 25 for normal, 250 for elite
+                
+                // Drops
                 state.drops.push({
                     id: `d-${Date.now()}`,
                     x: e.x, y: e.y,
-                    radius: 8, // Increased from 5
+                    radius: 8, 
                     type: 'DROP',
                     color: '#4299e1',
                     kind: 'XP',
@@ -1350,7 +1416,7 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
                     state.drops.push({
                         id: `n-${Date.now()}`,
                         x: e.x + 5, y: e.y,
-                        radius: 8, // Increased from 6
+                        radius: 8, 
                         type: 'DROP',
                         color: '#d69e2e',
                         kind: 'GOLD',
@@ -1363,11 +1429,11 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
                         id: `hp-${Date.now()}-${Math.random()}`,
                         x: e.x + (Math.random() * 10 - 5),
                         y: e.y + (Math.random() * 10 - 5),
-                        radius: 10, // Increased from 7
+                        radius: 10, 
                         type: 'DROP',
                         color: '#e53e3e', // Red
                         kind: 'HEALTH_PACK',
-                        value: 20 // Heal amount
+                        value: 20 
                     });
                 }
             }

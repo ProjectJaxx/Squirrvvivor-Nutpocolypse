@@ -191,6 +191,7 @@ export interface Particle extends Entity {
   attachedTo?: string; // ID of entity to follow
   // Atmospheric props
   drift?: Vector;
+  subtype?: 'SCRAP' | 'GOO' | 'DISINTEGRATE' | 'DEFAULT';
 }
 
 export interface FloatingText {

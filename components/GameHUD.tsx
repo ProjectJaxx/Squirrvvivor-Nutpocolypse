@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Player } from '../types';
-import { Skull, Clock, Trophy } from 'lucide-react';
+import { Skull, Clock, Trophy, AlertTriangle } from 'lucide-react';
 
 interface GameHUDProps {
     player: Player;
@@ -12,9 +12,10 @@ interface GameHUDProps {
     wave: number;
     maxWaveTime: number;
     onPause?: () => void;
+    boss?: { name: string, hp: number, maxHp: number, color: string } | null;
 }
 
-export const GameHUD: React.FC<GameHUDProps> = ({ player, score, kills, nuts, time, wave, maxWaveTime, onPause }) => {
+export const GameHUD: React.FC<GameHUDProps> = ({ player, score, kills, nuts, time, wave, maxWaveTime, onPause, boss }) => {
     
     // Format Time
     const mins = Math.floor(time / 3600);
@@ -66,6 +67,35 @@ export const GameHUD: React.FC<GameHUDProps> = ({ player, score, kills, nuts, ti
                     </div>
                 </div>
             </div>
+
+            {/* BOSS BAR OVERLAY (If active) */}
+            {boss && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 w-3/4 md:w-1/2 flex flex-col items-center animate-in slide-in-from-top-4 fade-in duration-300">
+                    <div className="flex items-center gap-2 mb-1">
+                        <AlertTriangle size={16} className="text-red-500 animate-pulse" />
+                        <span className="text-red-500 font-bold text-sm tracking-widest drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">{boss.name}</span>
+                        <AlertTriangle size={16} className="text-red-500 animate-pulse" />
+                    </div>
+                    <div className="w-full h-4 bg-gray-900/80 rounded-full border-2 border-red-900/50 overflow-hidden shadow-lg relative">
+                        {/* Background Pulse */}
+                        <div className="absolute inset-0 bg-red-900/20 animate-pulse" />
+                        
+                        <div 
+                            className="h-full transition-all duration-300 ease-out"
+                            style={{ 
+                                width: `${Math.max(0, (boss.hp / boss.maxHp) * 100)}%`,
+                                backgroundColor: boss.color,
+                                boxShadow: `0 0 10px ${boss.color}`
+                            }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-[9px] font-bold text-white/80 drop-shadow-md">
+                                {Math.ceil(boss.hp)} / {Math.ceil(boss.maxHp)}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* BARS: Full Width */}
             <div className="w-full flex flex-col gap-0.5 pointer-events-auto mt-1">

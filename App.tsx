@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, Component, ErrorInfo, useCallback } from 'react';
+import React, { Component, useState, useEffect, ErrorInfo, useCallback, ReactNode } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { MainMenu } from './components/MainMenu';
 import { UpgradeMenu } from './components/UpgradeMenu';
@@ -16,16 +15,25 @@ import { updateSlotStats } from './services/storageService';
 import { loadAssets } from './services/assetService';
 import { LoadingScreen } from './components/LoadingScreen';
 
-// Error Boundary to catch crashes and avoid white screen of death
-class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
-  public state = { hasError: false, error: null as Error | null };
+interface ErrorBoundaryProps {
+  children?: ReactNode;
+}
 
-  constructor(props: { children: React.ReactNode }) {
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+// Error Boundary to catch crashes and avoid white screen of death
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState = { hasError: false, error: null };
+  declare props: Readonly<ErrorBoundaryProps>;
+
+  constructor(props: ErrorBoundaryProps) {
     super(props);
-    // State initialization moved to property declaration
   }
 
-  static getDerivedStateFromError(error: Error) {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
@@ -67,7 +75,8 @@ const App: React.FC = () => {
       nuts: 0,
       time: 0,
       wave: 1,
-      player: undefined as Player | undefined
+      player: undefined as Player | undefined,
+      boss: null as { name: string, hp: number, maxHp: number, color: string } | null
   });
 
   const [finalScore, setFinalScore] = useState(0);
@@ -152,7 +161,7 @@ const App: React.FC = () => {
     setGameWon(false);
     setCurrentStage(1);
     setRunPlayer(undefined); 
-    setHudStats({ score: 0, kills: 0, nuts: 0, time: 0, wave: 1, player: undefined });
+    setHudStats({ score: 0, kills: 0, nuts: 0, time: 0, wave: 1, player: undefined, boss: null });
   };
 
   const quitGame = () => {
@@ -251,6 +260,7 @@ const App: React.FC = () => {
                         wave={currentStage} // Using stage as wave
                         maxWaveTime={180 * 60}
                         onPause={togglePause}
+                        boss={hudStats.boss}
                     />
                 )}
                 
