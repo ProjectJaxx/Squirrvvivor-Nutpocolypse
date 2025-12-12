@@ -85,21 +85,6 @@ const createGroundPattern = (biome: string, ctx: CanvasRenderingContext2D) => {
       }
 };
 
-// Map upgrade IDs to the weapon type they require.
-// If an upgrade is not in this list, it is considered "Global" or "New Weapon" and always available.
-const UPGRADE_PREREQUISITES: Record<string, string> = {
-    'MIDNIGHT_FEATHERS': 'CROW_AURA',
-    'BIGGER_EXPLOSIONS': 'ACORN_CANNON',
-    'FASTER_FIRING': 'ACORN_CANNON',
-    'EVERGREEN_BARRAGE': 'PINE_NEEDLE',
-    'STICKY_RESIN': 'SAP_LAUNCHER',
-    'SAP_STREAM': 'SAP_LAUNCHER',
-    'RETURNING_SNAP': 'BOOMERANG',
-    'MULTINUT': 'NUT_THROW',
-    'BIGGER_NUTS': 'NUT_THROW',
-    'FASTER_THROW': 'NUT_THROW'
-};
-
 interface ExtendedGameCanvasProps extends GameCanvasProps {
     onStatsUpdate?: (stats: { score: number, kills: number, nuts: number, time: number, player: Player }) => void;
 }
@@ -119,6 +104,7 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
   onStatsUpdate
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
     const requestRef = useRef<number | null>(null);
     const stateRef = useRef<GameState | null>(null);
     const keysRef = useRef<Record<string, boolean>>({});
@@ -382,72 +368,88 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
         }
     };
 
-    // --- TOUCH HANDLERS (Mobile) ---
-    const handleTouchStart = (e: React.TouchEvent) => {
-        // Prevent default only if necessary, but we need UI interactions
-        // e.preventDefault(); // CAREFUL: this stops buttons from working if not handled right
-        
-        for (let i = 0; i < e.changedTouches.length; i++) {
-            const t = e.changedTouches[i];
-            
-            // Check if touch is on left side (Joystick zone)
-            // Using 40% of width to leave center clear
-            if (t.clientX < window.innerWidth * 0.45) {
-                if (!joystickRef.current.active) {
-                    joystickRef.current = {
-                        active: true,
-                        origin: { x: t.clientX, y: t.clientY },
-                        current: { x: t.clientX, y: t.clientY },
-                        vector: { x: 0, y: 0 },
-                        identifier: t.identifier
+    // --- NATIVE TOUCH HANDLERS (Robust Mobile Support) ---
+    // We attach these directly to the DOM element to support non-passive listeners (e.preventDefault)
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const onTouchStart = (e: TouchEvent) => {
+            // Prevent default to stop scrolling/zooming which kills game input on mobile
+            e.preventDefault(); 
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                // Joystick Zone: Left 50% of screen
+                if (t.clientX < window.innerWidth * 0.5) {
+                    if (!joystickRef.current.active) {
+                        joystickRef.current = {
+                            active: true,
+                            origin: { x: t.clientX, y: t.clientY },
+                            current: { x: t.clientX, y: t.clientY },
+                            vector: { x: 0, y: 0 },
+                            identifier: t.identifier
+                        };
+                    }
+                }
+            }
+        };
+
+        const onTouchMove = (e: TouchEvent) => {
+            e.preventDefault();
+            if (!joystickRef.current.active) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === joystickRef.current.identifier) {
+                    const maxRadius = 60;
+                    let dx = t.clientX - joystickRef.current.origin.x;
+                    let dy = t.clientY - joystickRef.current.origin.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    // Clamp visual
+                    if (dist > maxRadius) {
+                        const ratio = maxRadius / dist;
+                        dx *= ratio;
+                        dy *= ratio;
+                    }
+                    
+                    joystickRef.current.current = {
+                        x: joystickRef.current.origin.x + dx,
+                        y: joystickRef.current.origin.y + dy
+                    };
+                    
+                    // Normalize Vector
+                    joystickRef.current.vector = {
+                        x: dx / maxRadius,
+                        y: dy / maxRadius
                     };
                 }
             }
-        }
-    };
+        };
 
-    const handleTouchMove = (e: React.TouchEvent) => {
-        if (!joystickRef.current.active) return;
-        
-        for (let i = 0; i < e.changedTouches.length; i++) {
-            const t = e.changedTouches[i];
-            if (t.identifier === joystickRef.current.identifier) {
-                // Update position
-                const maxRadius = 50;
-                let dx = t.clientX - joystickRef.current.origin.x;
-                let dy = t.clientY - joystickRef.current.origin.y;
-                const dist = Math.sqrt(dx*dx + dy*dy);
-                
-                // Clamp visual
-                if (dist > maxRadius) {
-                    const ratio = maxRadius / dist;
-                    dx *= ratio;
-                    dy *= ratio;
+        const onTouchEnd = (e: TouchEvent) => {
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === joystickRef.current.identifier) {
+                    joystickRef.current.active = false;
+                    joystickRef.current.vector = { x: 0, y: 0 };
                 }
-                
-                joystickRef.current.current = {
-                    x: joystickRef.current.origin.x + dx,
-                    y: joystickRef.current.origin.y + dy
-                };
-                
-                // Normalize Vector
-                joystickRef.current.vector = {
-                    x: dx / maxRadius,
-                    y: dy / maxRadius
-                };
             }
-        }
-    };
+        };
 
-    const handleTouchEnd = (e: React.TouchEvent) => {
-        for (let i = 0; i < e.changedTouches.length; i++) {
-            const t = e.changedTouches[i];
-            if (t.identifier === joystickRef.current.identifier) {
-                joystickRef.current.active = false;
-                joystickRef.current.vector = { x: 0, y: 0 };
-            }
-        }
-    };
+        // Attach with { passive: false } to allow preventing default behavior
+        container.addEventListener('touchstart', onTouchStart, { passive: false });
+        container.addEventListener('touchmove', onTouchMove, { passive: false });
+        container.addEventListener('touchend', onTouchEnd, { passive: false });
+        container.addEventListener('touchcancel', onTouchEnd, { passive: false });
+
+        return () => {
+            container.removeEventListener('touchstart', onTouchStart);
+            container.removeEventListener('touchmove', onTouchMove);
+            container.removeEventListener('touchend', onTouchEnd);
+            container.removeEventListener('touchcancel', onTouchEnd);
+        };
+    }, []);
 
     const update = (state: GameState) => {
         const { player } = state;
@@ -482,11 +484,8 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
         if (keysRef.current['a'] || keysRef.current['ArrowLeft']) dx -= 1;
         if (keysRef.current['d'] || keysRef.current['ArrowRight']) dx += 1;
 
-        // Joystick Input (Override or Combine? Combine allows hybrid, override usually better)
+        // Joystick Input
         if (joystickRef.current.active) {
-            // If Joystick is active, it takes priority or mixes? 
-            // Let's just use it if keys are idle, or add them.
-            // Actually, adding them feels natural if someone tries both.
             dx += joystickRef.current.vector.x;
             dy += joystickRef.current.vector.y;
         }
@@ -1713,10 +1712,8 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
 
     return (
         <div 
-            className="w-full h-full relative touch-none"
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            ref={containerRef}
+            className="w-full h-full relative touch-none select-none"
         >
             <canvas 
                 ref={canvasRef} 

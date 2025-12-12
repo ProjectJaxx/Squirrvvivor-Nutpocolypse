@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, Component, ErrorInfo } from 'react';
+import React, { useState, useEffect, Component, ErrorInfo, useCallback } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { MainMenu } from './components/MainMenu';
 import { UpgradeMenu } from './components/UpgradeMenu';
@@ -227,6 +227,11 @@ const App: React.FC = () => {
   const closeSettings = () => {
     setAppState(previousAppState);
   };
+
+  // Optimize stats update to avoid re-creating function every render
+  const handleStatsUpdate = useCallback((stats: any) => {
+      setHudStats(prev => ({...prev, ...stats}));
+  }, []);
   
   return (
     <ErrorBoundary>
@@ -261,82 +266,83 @@ const App: React.FC = () => {
                 musicEnabled={musicEnabled}
                 stageDuration={stageDuration}
                 onTogglePause={togglePause}
-                // @ts-ignore - Dynamic prop
-                onStatsUpdate={(stats: any) => setHudStats(prev => ({...prev, ...stats}))}
+                onStatsUpdate={handleStatsUpdate}
                 />
             </div>
         )}
         
         {/* MENUS & SCREENS LAYER */}
-        <div className="absolute inset-0 pointer-events-none z-30 flex flex-col items-center justify-center">
-            <div className="pointer-events-auto w-full h-full">
-                {appState === 'LOADING' && <LoadingScreen />}
-                {appState === 'SAVE_SELECT' && <SaveSlots onSelect={handleSlotSelect} />}
-                {appState === 'MENU' && (
-                    <MainMenu 
-                    onStart={startGame} 
-                    onSettings={openSettings} 
-                    onBaseUpgrades={() => setAppState('BASE_UPGRADES')}
-                    selectedCharacter={selectedCharacter}
-                    onSelectCharacter={setSelectedCharacter}
-                    currentSlot={currentSlot}
-                    onSwitchSlot={() => setAppState('SAVE_SELECT')}
-                    />
-                )}
-                {appState === 'BASE_UPGRADES' && currentSlot && (
-                    <BaseUpgrades 
-                        slot={currentSlot} 
-                        onBack={() => setAppState('MENU')}
-                        onUpdateSlot={setCurrentSlot}
-                    />
-                )}
-                {appState === 'STAGE_CLEAR' && (
-                    <StageClear 
-                        stage={currentStage}
-                        score={finalScore}
+        {appState !== 'GAME' && (
+            <div className="absolute inset-0 pointer-events-none z-30 flex flex-col items-center justify-center">
+                <div className="pointer-events-auto w-full h-full">
+                    {appState === 'LOADING' && <LoadingScreen />}
+                    {appState === 'SAVE_SELECT' && <SaveSlots onSelect={handleSlotSelect} />}
+                    {appState === 'MENU' && (
+                        <MainMenu 
+                        onStart={startGame} 
+                        onSettings={openSettings} 
+                        onBaseUpgrades={() => setAppState('BASE_UPGRADES')}
+                        selectedCharacter={selectedCharacter}
+                        onSelectCharacter={setSelectedCharacter}
+                        currentSlot={currentSlot}
+                        onSwitchSlot={() => setAppState('SAVE_SELECT')}
+                        />
+                    )}
+                    {appState === 'BASE_UPGRADES' && currentSlot && (
+                        <BaseUpgrades 
+                            slot={currentSlot} 
+                            onBack={() => setAppState('MENU')}
+                            onUpdateSlot={setCurrentSlot}
+                        />
+                    )}
+                    {appState === 'STAGE_CLEAR' && (
+                        <StageClear 
+                            stage={currentStage}
+                            score={finalScore}
+                            kills={finalKills}
+                            nuts={finalNuts}
+                            onContinue={continueToNextStage}
+                            onExtract={extractFromRun}
+                        />
+                    )}
+                    {appState === 'SETTINGS' && (
+                        <SettingsMenu 
+                        soundEnabled={soundEnabled} 
+                        toggleSound={() => setSoundEnabled(!soundEnabled)}
+                        musicEnabled={musicEnabled}
+                        toggleMusic={() => setMusicEnabled(!musicEnabled)}
+                        stageDuration={stageDuration}
+                        setStageDuration={setStageDuration} 
+                        onBack={closeSettings} 
+                        />
+                    )}
+                    {appState === 'PAUSED' && (
+                        <PauseMenu 
+                            onResume={togglePause}
+                            onSettings={openSettings}
+                            onQuit={quitGame}
+                        />
+                    )}
+                    {appState === 'LEVEL_UP' && (
+                        <UpgradeMenu 
+                        upgrades={availableUpgrades} 
+                        onSelect={confirmUpgrade} 
+                        />
+                    )}
+                    {appState === 'GAME_OVER' && (
+                        <GameOver 
+                        score={finalScore} 
+                        timeSurvived={finalTime}
                         kills={finalKills}
                         nuts={finalNuts}
-                        onContinue={continueToNextStage}
-                        onExtract={extractFromRun}
-                    />
-                )}
-                {appState === 'SETTINGS' && (
-                    <SettingsMenu 
-                    soundEnabled={soundEnabled} 
-                    toggleSound={() => setSoundEnabled(!soundEnabled)}
-                    musicEnabled={musicEnabled}
-                    toggleMusic={() => setMusicEnabled(!musicEnabled)}
-                    stageDuration={stageDuration}
-                    setStageDuration={setStageDuration} 
-                    onBack={closeSettings} 
-                    />
-                )}
-                {appState === 'PAUSED' && (
-                    <PauseMenu 
-                        onResume={togglePause}
-                        onSettings={openSettings}
-                        onQuit={quitGame}
-                    />
-                )}
-                {appState === 'LEVEL_UP' && (
-                    <UpgradeMenu 
-                    upgrades={availableUpgrades} 
-                    onSelect={confirmUpgrade} 
-                    />
-                )}
-                {appState === 'GAME_OVER' && (
-                    <GameOver 
-                    score={finalScore} 
-                    timeSurvived={finalTime}
-                    kills={finalKills}
-                    nuts={finalNuts}
-                    won={gameWon}
-                    onRestart={startGame}
-                    onMenu={() => setAppState('MENU')}
-                    />
-                )}
+                        won={gameWon}
+                        onRestart={startGame}
+                        onMenu={() => setAppState('MENU')}
+                        />
+                    )}
+                </div>
             </div>
-        </div>
+        )}
         </div>
     </ErrorBoundary>
   );
