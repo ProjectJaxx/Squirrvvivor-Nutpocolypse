@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Player } from '../types';
-import { Skull, Clock } from 'lucide-react';
+import { Skull, Clock, Trophy } from 'lucide-react';
 
 interface GameHUDProps {
     player: Player;
@@ -25,66 +25,67 @@ export const GameHUD: React.FC<GameHUDProps> = ({ player, score, kills, nuts, ti
     const xpPct = Math.max(0, Math.min(100, (player.xp / player.nextLevelXp) * 100));
 
     return (
-        <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-20">
+        <div className="absolute inset-0 pointer-events-none flex flex-col p-4 z-20">
             
-            {/* TOP BAR */}
-            <div className="flex items-start justify-between">
+            {/* TOP ROW: Stats & Timer */}
+            <div className="flex items-end justify-between w-full mb-2 pointer-events-auto">
                 
-                {/* Score & Nuts */}
-                <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2 bg-gray-900/80 backdrop-blur px-4 py-2 rounded-full border border-gray-700">
-                        <span className="text-amber-400 font-bold text-xl drop-shadow-sm">{score}</span>
-                        <span className="text-xs text-gray-400 font-bold tracking-widest uppercase">SCORE</span>
-                    </div>
-                    <div className="flex items-center gap-2 bg-gray-900/80 backdrop-blur px-4 py-1 rounded-full border border-gray-700 w-fit">
-                        <span className="text-xl">🥜</span>
-                        <span className="text-white font-bold">{nuts}</span>
-                    </div>
-                </div>
-
-                {/* Timer */}
-                <div className="flex flex-col items-center">
-                    <div className="bg-gray-900/90 text-white font-mono text-3xl font-bold px-6 py-2 rounded-lg border-b-4 border-gray-700 shadow-lg flex items-center gap-3">
-                        <Clock size={24} className="text-gray-400" />
-                        {timeStr}
-                    </div>
-                    {/* Boss/Wave Warning could go here */}
-                </div>
-
-                {/* Kills & Level */}
-                <div className="flex flex-col items-end gap-2">
-                    <div className="flex items-center gap-3 bg-red-900/80 backdrop-blur px-4 py-2 rounded-full border border-red-800">
+                {/* LEFT: Kills & Wave */}
+                <div className="flex flex-col gap-2 items-start">
+                    <div className="flex items-center gap-2 bg-red-900/80 backdrop-blur-md px-3 py-2 rounded-lg border border-red-800 shadow-lg transform hover:scale-105 transition-transform">
                         <Skull className="text-white" size={20} />
                         <span className="text-white font-bold text-xl">{kills}</span>
                     </div>
-                    <div className="bg-gray-900/80 backdrop-blur px-3 py-1 rounded text-xs text-gray-400 border border-gray-700">
+                    <div className="bg-gray-900/80 backdrop-blur px-3 py-1 rounded text-sm text-gray-300 border border-gray-600 font-mono shadow-sm">
                         WAVE {wave}
+                    </div>
+                </div>
+
+                {/* CENTER: Timer */}
+                <div className="flex-1 flex justify-center pb-1">
+                     <div className="bg-gray-900/90 backdrop-blur-md text-white font-mono text-4xl font-bold px-8 py-2 rounded-xl border-2 border-gray-700 shadow-2xl flex items-center gap-3 transform -translate-y-2">
+                        <Clock size={28} className="text-amber-500" />
+                        <span className="tracking-widest drop-shadow-md">{timeStr}</span>
+                    </div>
+                </div>
+
+                {/* RIGHT: Nuts & Score */}
+                <div className="flex flex-col items-end gap-2">
+                    <div className="flex items-center gap-2 bg-amber-900/80 backdrop-blur-md px-4 py-2 rounded-lg border border-amber-700 shadow-lg transform hover:scale-105 transition-transform">
+                        <span className="text-xl">🥜</span>
+                        <span className="text-white font-bold text-xl">{nuts}</span>
+                    </div>
+                    <div className="flex items-center gap-2 bg-gray-900/80 backdrop-blur px-3 py-1 rounded-full border border-gray-600 shadow-sm">
+                        <Trophy size={16} className="text-yellow-400" />
+                        <span className="text-yellow-400 font-bold text-sm">{score}</span>
                     </div>
                 </div>
             </div>
 
-            {/* BOTTOM BAR - STATS */}
-            <div className="w-full max-w-4xl mx-auto flex flex-col gap-1 mb-4">
-                
+            {/* BARS: Full Width */}
+            <div className="w-full flex flex-col gap-1 pointer-events-auto shadow-2xl">
                 {/* HP Bar */}
-                <div className="relative w-full h-8 bg-gray-900 rounded-lg overflow-hidden border-2 border-gray-700 shadow-xl">
+                <div className="relative w-full h-8 bg-gray-900/90 rounded-lg overflow-hidden border-2 border-gray-700 shadow-lg">
                     <div 
-                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-red-600 to-red-500 transition-all duration-300 ease-out"
+                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-red-700 via-red-600 to-red-500 transition-all duration-300 ease-out"
                         style={{ width: `${hpPct}%` }}
                     />
-                    <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white drop-shadow-md z-10">
-                        <span className="mr-1">HP</span> {Math.ceil(player.hp)} / {Math.ceil(player.maxHp)}
+                    {/* Gloss effect */}
+                    <div className="absolute top-0 left-0 w-full h-1/2 bg-white/10"></div>
+                    
+                    <div className="absolute inset-0 flex items-center justify-center text-sm font-black text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] z-10 tracking-wider">
+                        <span className="mr-2 text-red-200">HP</span> {Math.ceil(player.hp)} / {Math.ceil(player.maxHp)}
                     </div>
                 </div>
 
                 {/* XP Bar */}
-                <div className="relative w-full h-4 bg-gray-900 rounded-full overflow-hidden border border-gray-700 mt-1">
+                <div className="relative w-full h-4 bg-gray-900/90 rounded-full overflow-hidden border border-gray-600 shadow-md mt-1">
                      <div 
-                        className="absolute top-0 left-0 h-full bg-blue-500 transition-all duration-300 ease-out"
+                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-300 ease-out"
                         style={{ width: `${xpPct}%` }}
                     />
-                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white/90 z-10">
-                        LVL {player.level}
+                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white/90 z-10 drop-shadow-md">
+                        LEVEL {player.level}
                     </div>
                 </div>
             </div>

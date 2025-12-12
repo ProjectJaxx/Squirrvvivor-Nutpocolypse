@@ -1557,9 +1557,11 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
 
         ctx.save();
         // Translate to Center Player/Camera with Shake
+        // Shift rendering down by 15% of screen height so character appears lower
+        const verticalOffset = CANVAS_HEIGHT * 0.15;
         ctx.translate(
             (CANVAS_WIDTH / 2 - cameraRef.current.x) + shakeX, 
-            (CANVAS_HEIGHT / 2 - cameraRef.current.y) + shakeY
+            (CANVAS_HEIGHT / 2 - cameraRef.current.y) + shakeY + verticalOffset
         );
 
         // Draw Map Boundary / Ground
@@ -1723,25 +1725,26 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
             />
             
             {/* Mobile Action Buttons Overlay */}
-            <div className="absolute bottom-8 right-8 flex flex-col gap-4 pointer-events-auto">
+            {/* Changed from bottom-8 right-8 to right-center */}
+            <div className="absolute top-1/2 right-4 -translate-y-1/2 flex flex-col gap-6 pointer-events-auto z-40">
                 <button 
-                    className="w-16 h-16 rounded-full bg-blue-600/80 border-2 border-white/50 flex items-center justify-center text-white active:scale-95 transition-transform shadow-lg"
+                    className="w-12 h-12 rounded-full bg-blue-600/50 border-2 border-white/30 flex items-center justify-center text-white active:scale-95 transition-transform shadow-lg backdrop-blur-sm"
                     onTouchStart={(e) => { e.stopPropagation(); actionsRef.current.ability = true; setMobileActions(p => ({...p, ability: true})); }}
                     onTouchEnd={() => setMobileActions(p => ({...p, ability: false}))}
                     onMouseDown={(e) => { e.stopPropagation(); actionsRef.current.ability = true; setMobileActions(p => ({...p, ability: true})); }}
                     onMouseUp={() => setMobileActions(p => ({...p, ability: false}))}
                 >
-                    <Zap size={32} />
+                    <Zap size={24} />
                 </button>
                 
                 <button 
-                    className="w-20 h-20 rounded-full bg-amber-600/80 border-2 border-white/50 flex items-center justify-center text-white active:scale-95 transition-transform shadow-lg"
+                    className="w-16 h-16 rounded-full bg-amber-600/50 border-2 border-white/30 flex items-center justify-center text-white active:scale-95 transition-transform shadow-lg backdrop-blur-sm"
                     onTouchStart={(e) => { e.stopPropagation(); actionsRef.current.dash = true; setMobileActions(p => ({...p, dash: true})); }}
                     onTouchEnd={() => setMobileActions(p => ({...p, dash: false}))}
                     onMouseDown={(e) => { e.stopPropagation(); actionsRef.current.dash = true; setMobileActions(p => ({...p, dash: true})); }}
                     onMouseUp={() => setMobileActions(p => ({...p, dash: false}))}
                 >
-                    <Wind size={40} />
+                    <Wind size={32} />
                 </button>
             </div>
         </div>
