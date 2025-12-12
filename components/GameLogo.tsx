@@ -9,12 +9,15 @@ interface GameLogoProps {
 
 export const GameLogo: React.FC<GameLogoProps> = ({ className = "w-32 h-32", showText = false, style }) => {
   const [error, setError] = useState(false);
+  
+  // Use raw.githubusercontent.com for direct image access
+  const LOGO_SRC = "https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/c4b089647635aba7162adc71d7bf21da14b04ac0/public/assets/graphics/squirvivortrans.png";
 
   return (
     <div className={`flex flex-col items-center justify-center select-none ${className}`} style={style}>
       {!error ? (
         <img 
-          src="assets/graphics/logotrans.svg" 
+          src={LOGO_SRC} 
           alt="SquirrelVivor" 
           className="w-full h-full object-contain drop-shadow-xl"
           onError={() => setError(true)}
