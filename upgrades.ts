@@ -1,7 +1,8 @@
 
+
 import { Player, Upgrade, Weapon } from './types';
 
-const findWeapon = (player: Player, type: 'NUT_THROW' | 'CROW_AURA' | 'ACORN_CANNON' | 'FEATHER_STORM') => {
+const findWeapon = (player: Player, type: 'NUT_THROW' | 'CROW_AURA' | 'ACORN_CANNON' | 'FEATHER_STORM' | 'PINE_NEEDLE' | 'SAP_PUDDLE' | 'BOOMERANG') => {
     return player.weapons.find(w => w.type === type);
 };
 
@@ -197,6 +198,128 @@ export const ALL_UPGRADES: Upgrade[] = [
             const cannon = findWeapon(player, 'ACORN_CANNON');
             if (cannon) {
                 cannon.cooldown = Math.max(20, cannon.cooldown * 0.75);
+            }
+        }
+    },
+    // --- PINE NEEDLE GATLING ---
+    {
+        id: 'PINE_NEEDLE',
+        name: 'Pine Needle Gatling',
+        description: 'Rapidly fires sharp pine needles. Low damage, but very high fire rate.',
+        rarity: 'RARE',
+        icon: '🌲',
+        apply: (player: Player) => {
+            if (!findWeapon(player, 'PINE_NEEDLE')) {
+                player.weapons.push({
+                    type: 'PINE_NEEDLE',
+                    level: 1,
+                    damage: 6,
+                    cooldown: 8,
+                    cooldownTimer: 0,
+                    area: 2, // Width of needle
+                    speed: 12,
+                    amount: 1
+                });
+            } else {
+                const w = findWeapon(player, 'PINE_NEEDLE')!;
+                w.damage += 2;
+                w.cooldown = Math.max(4, w.cooldown - 1);
+            }
+        }
+    },
+    {
+        id: 'EVERGREEN_BARRAGE',
+        name: 'Evergreen Barrage',
+        description: 'Adds 2 extra needles per shot in a spread pattern.',
+        rarity: 'EPIC',
+        icon: '🌿',
+        apply: (player: Player) => {
+            const w = findWeapon(player, 'PINE_NEEDLE');
+            if (w) {
+                w.amount += 2;
+            }
+        }
+    },
+    // --- SAP PUDDLE ---
+    {
+        id: 'SAP_PUDDLE',
+        name: 'Sap Puddle',
+        description: 'Drops sticky sap that slows and damages enemies over time.',
+        rarity: 'RARE',
+        icon: '🍯',
+        apply: (player: Player) => {
+            if (!findWeapon(player, 'SAP_PUDDLE')) {
+                player.weapons.push({
+                    type: 'SAP_PUDDLE',
+                    level: 1,
+                    damage: 2, // Per tick
+                    cooldown: 180, // 3 seconds
+                    cooldownTimer: 0,
+                    area: 60, // Radius
+                    speed: 0, // Stationary
+                    amount: 1,
+                    duration: 300 // 5 seconds
+                });
+            } else {
+                const w = findWeapon(player, 'SAP_PUDDLE')!;
+                w.area += 15;
+                w.duration += 60;
+            }
+        }
+    },
+    {
+        id: 'AMBER_TRAP',
+        name: 'Amber Trap',
+        description: 'Significantly increases Sap Puddle radius and damage.',
+        rarity: 'EPIC',
+        icon: '🔶',
+        apply: (player: Player) => {
+            const w = findWeapon(player, 'SAP_PUDDLE');
+            if (w) {
+                w.area *= 1.5;
+                w.damage += 2;
+            }
+        }
+    },
+    // --- BOOMERANG TWIG ---
+    {
+        id: 'BOOMERANG',
+        name: 'Boomerang Twig',
+        description: 'Throws a branch that returns to you, piercing all enemies in its path.',
+        rarity: 'EPIC',
+        icon: '🪃',
+        apply: (player: Player) => {
+            if (!findWeapon(player, 'BOOMERANG')) {
+                player.weapons.push({
+                    type: 'BOOMERANG',
+                    level: 1,
+                    damage: 20,
+                    cooldown: 90,
+                    cooldownTimer: 0,
+                    area: 15, // Size
+                    speed: 10,
+                    amount: 1,
+                    duration: 100 // Max flight time if it doesn't return
+                });
+            } else {
+                const w = findWeapon(player, 'BOOMERANG')!;
+                w.damage += 10;
+                w.amount += 1;
+            }
+        }
+    },
+    {
+        id: 'RETURNING_SNAP',
+        name: 'Returning Snap',
+        description: 'Boomerang travels further and deals massive damage.',
+        rarity: 'LEGENDARY',
+        icon: '🔄',
+        apply: (player: Player) => {
+            const w = findWeapon(player, 'BOOMERANG');
+            if (w) {
+                w.damage += 15;
+                w.speed += 2;
+                w.duration += 20; // Fly further
             }
         }
     }

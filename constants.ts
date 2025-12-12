@@ -1,5 +1,3 @@
-
-
 import { GameState, Player, Weapon, SquirrelCharacter, StageDuration, BaseUpgradeDef } from './types';
 
 export const CANVAS_WIDTH = window.innerWidth;
@@ -11,14 +9,14 @@ export const GAME_WIN_TIME = 180 * 60; // 3 minutes in frames (180s * 60fps)
 export const COLORS = {
   background: '#2d3748',
   player: '#ed8936', // Squirrel Orange (Default fallback)
-  zombie: '#68d391',
-  robot: '#a0aec0',
-  alien: '#D53F8C', // Pinkish purple
+  zombie: '#68d391', // Light Green
+  robot: '#a0aec0', // Metal Grey
+  alien: '#b83280', // Dark Pink
   gem: '#B7791F', // Nut Brown
   text: '#ffffff',
-  parkBg: '#2F855A', // Dark Green
-  parkingBg: '#4A5568', // Asphalt Grey
-  marsBg: '#742A2A', // Mars Red
+  parkBg: '#276749', // Deep Green
+  parkingBg: '#2d3748', // Dark Asphalt
+  marsBg: '#742a2a', // Deep Red
 };
 
 export const BIOME_CONFIG = {
@@ -43,36 +41,38 @@ export const SQUIRREL_CHARACTERS: SquirrelCharacter[] = [
   {
     id: 'GREY',
     name: 'Eastern Grey',
-    description: 'Balanced survivor. The classic choice.',
+    description: 'Balanced stats. The classic bushy-tailed warrior.',
     hp: 100,
-    speed: 4,
-    color: '#A0AEC0', // Slate Grey
+    speed: 5,
+    color: '#A0AEC0', // Slate Grey Body
+    secondaryColor: '#E2E8F0', // Light Grey Belly/Tail tip
     emoji: '🐿️',
     radius: 16,
-    filter: 'grayscale(100%) brightness(1.2) drop-shadow(0 0 2px rgba(255,255,255,0.3))',
+    filter: 'grayscale(100%) brightness(1.1)', 
     activeAbility: {
       type: 'NUT_BARRAGE',
       name: 'Nut Barrage',
-      cooldown: 900, // 15 seconds
+      cooldown: 900, 
       cooldownTimer: 0,
-      duration: 180, // 3 seconds
+      duration: 180, 
       activeTimer: 0
     }
   },
   {
     id: 'RED',
     name: 'American Red',
-    description: 'Fast and agile, but fragile.',
+    description: 'Fast and agile. High stamina regeneration.',
     hp: 70,
-    speed: 5.5,
-    color: '#E53E3E', // Red-600
+    speed: 6.5,
+    color: '#C53030', // Red Body
+    secondaryColor: '#FC8181', // Pinkish/Orange belly
     emoji: '🐿️',
     radius: 14,
-    filter: 'sepia(1) saturate(500%) hue-rotate(-40deg) brightness(1.1) contrast(1.1) drop-shadow(0 0 2px rgba(229,62,62,0.5))',
+    filter: 'hue-rotate(-30deg) saturate(150%)', 
     activeAbility: {
       type: 'NUT_BARRAGE',
       name: 'Nut Barrage',
-      cooldown: 800, // Slightly faster cooldown for Red
+      cooldown: 800,
       cooldownTimer: 0,
       duration: 180,
       activeTimer: 0
@@ -81,19 +81,20 @@ export const SQUIRREL_CHARACTERS: SquirrelCharacter[] = [
   {
     id: 'GIANT',
     name: 'Indian Giant',
-    description: 'A massive tank. High HP, slower movement.',
+    description: 'A massive tank. Slower, but knocks enemies back.',
     hp: 160,
-    speed: 3,
-    color: '#3E2723', // Dark Brown/Black
+    speed: 4,
+    color: '#3E2723', // Dark Brown
+    secondaryColor: '#5D4037', // Light Brown
     emoji: '🐿️',
-    radius: 22,
-    filter: 'grayscale(60%) brightness(0.6) sepia(40%) contrast(1.3) drop-shadow(0 0 3px rgba(0,0,0,0.5))',
+    radius: 24,
+    filter: 'sepia(0.5) brightness(0.7)', 
     activeAbility: {
       type: 'NUT_BARRAGE',
       name: 'Nut Barrage',
-      cooldown: 1000, // Slower cooldown
+      cooldown: 1000,
       cooldownTimer: 0,
-      duration: 240, // Longer duration
+      duration: 240,
       activeTimer: 0
     }
   }
@@ -114,7 +115,7 @@ export const DEFAULT_WEAPONS: Weapon[] = [
 
 export const INITIAL_PLAYER: Player = {
   id: 'player',
-  x: 0, // Centered relative to camera usually, but here world coords
+  x: 0,
   y: 0,
   radius: 16,
   type: 'PLAYER',
@@ -124,28 +125,35 @@ export const INITIAL_PLAYER: Player = {
   xp: 0,
   level: 1,
   nextLevelXp: 100,
-  speed: 4,
+  speed: 5,
+  velocity: { x: 0, y: 0 },
+  acceleration: 0.8,
+  friction: 0.88,
   magnetRadius: 150,
   weapons: DEFAULT_WEAPONS,
   activeAbility: {
     type: 'NUT_BARRAGE',
     name: 'Nut Barrage',
-    cooldown: 900, // 15 seconds
+    cooldown: 900,
     cooldownTimer: 0,
-    duration: 180, // 3 seconds
+    duration: 180,
     activeTimer: 0
   },
   facing: 'RIGHT',
   rotation: 0,
   emoji: '🐿️',
   characterId: 'GREY',
+  secondaryColor: '#E2E8F0',
   stamina: 100,
   maxStamina: 100,
-  isSprinting: false,
+  dashCooldown: 0,
+  isDashing: false,
+  dashVector: { x: 0, y: 0 },
   invincibleTimer: 0,
   animationState: 'IDLE',
   animationFrame: 0,
   frameTimer: 0,
+  tailWagOffset: 0,
   maxCompanions: 0,
   revives: 0
 };

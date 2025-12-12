@@ -15,7 +15,10 @@ export type EntityType =
   'EXPLOSION' | 'SMOKE' | 'TRAIL' | 'OBSTACLE' | 'FRAGMENT' | 'SPARK' | 'FLASH' |
   'BRUTE_ZOMBIE' | 'RUNNER_ZOMBIE' | 'SPITTER_ZOMBIE' | 'VENOM_SPIT' |
   'SWARM_ZOMBIE' | 'SHIELD_ZOMBIE' | 'GHOST' | 'TANK_BOT' | 'MARTIAN_SPIDER' |
-  'BOSS_ZOMBIE' | 'BOSS_ROBOT' | 'BOSS_ALIEN' | 'BOSS_MISSILE' | 'LASER' | 'COMPANION';
+  'CYBER_HOUND' | 'MECHA_BEETLE' |
+  'BOSS_ZOMBIE' | 'BOSS_ROBOT' | 'BOSS_ALIEN' | 'BOSS_MISSILE' | 'LASER' | 'COMPANION' |
+  'PINE_NEEDLE' | 'SAP_PUDDLE' | 'BOOMERANG' |
+  'WATER_JET' | 'SPORE_CLOUD' | 'SHOCKWAVE' | 'SAP_BLOB';
 
 export interface Entity {
   id: string;
@@ -41,18 +44,19 @@ export interface SquirrelCharacter {
   name: string;
   description: string;
   hp: number;
-  speed: number;
+  speed: number; // Base max speed
   color: string;
+  secondaryColor: string; // Tail/Detail color
   emoji: string;
   radius: number;
   filter?: string;
   activeAbility: ActiveAbility;
   // Base stats that can be modified by permanent upgrades
   magnetRadius?: number;
-  maxCompanions?: number; // New stat for Scurry upgrade
-  damageBonus?: number; // Percent (e.g. 0.1 for 10%)
-  cooldownReduction?: number; // Percent (e.g. 0.1 for 10%)
-  revives?: number; // Count
+  maxCompanions?: number;
+  damageBonus?: number;
+  cooldownReduction?: number;
+  revives?: number;
 }
 
 export interface Companion extends Entity {
@@ -63,31 +67,55 @@ export interface Companion extends Entity {
 }
 
 export interface Player extends Entity {
+  // Stats
   hp: number;
   maxHp: number;
   xp: number;
   level: number;
   nextLevelXp: number;
   speed: number;
-  magnetRadius: number; // Magnet pickup range
+  magnetRadius: number;
+  
+  // Physics / Control
+  velocity: Vector;
+  acceleration: number;
+  friction: number;
+  facing: 'LEFT' | 'RIGHT';
+  rotation: number; // Visual tilt
+  
+  // Combat
   weapons: Weapon[];
-  activeAbility: ActiveAbility; // New active ability field
-  facing: 'LEFT' | 'RIGHT' | 'UP' | 'DOWN';
-  rotation: number;
+  activeAbility: ActiveAbility;
+  
+  // State
   characterId?: string;
+  secondaryColor?: string; // For rendering
   filter?: string;
   xpFlashTimer?: number;
   slowedTimer?: number;
+  
+  // Stamina / Dash System
   stamina: number;
   maxStamina: number;
-  isSprinting?: boolean;
+  dashCooldown: number;
+  isDashing: boolean;
+  dashVector: Vector;
+
   invincibleTimer?: number;
-  airborneTimer?: number; // New: Tracks frames player is in the air (launched)
-  animationState: 'IDLE' | 'WALKING';
+  airborneTimer?: number; 
+  attackAnimTimer?: number;
+  currentAttackType?: 'NUT_THROW' | 'OTHER';
+  
+  // Animation
+  animationState: 'IDLE' | 'RUN' | 'DASH';
   animationFrame: number;
   frameTimer: number;
-  maxCompanions?: number; // How many companions allowed
-  revives?: number; // Number of revives remaining
+  tailWagOffset: number; // For rendering the tail
+  
+  // Upgrades
+  maxCompanions?: number;
+  revives?: number;
+  damageBonus?: number;
 }
 
 export interface StatusEffect {
@@ -95,6 +123,8 @@ export interface StatusEffect {
   duration: number;
   magnitude: number;
 }
+
+export type EliteType = 'SPEED' | 'REGEN' | 'DAMAGE';
 
 export interface Enemy extends Entity {
   hp: number;
@@ -111,6 +141,21 @@ export interface Enemy extends Entity {
   animationState: 'WALKING' | 'IDLE';
   animationFrame: number;
   frameTimer: number;
+  
+  // Elite Properties
+  isElite?: boolean;
+  eliteType?: EliteType;
+  
+  // Dynamic Buffs (reset every frame)
+  speedMultiplier?: number;
+  damageMultiplier?: number;
+
+  // Boss specific properties
+  bossPhase?: number; // 1 or 2
+  bossState?: 'IDLE' | 'WARN' | 'ATTACK' | 'COOLDOWN';
+  bossTimer?: number;
+  attackType?: string;
+  targetLocation?: Vector;
 }
 
 export interface Projectile extends Entity {
@@ -122,6 +167,15 @@ export interface Projectile extends Entity {
   explodeRadius?: number;
   hostile?: boolean;
   hitIds?: string[]; // Track entities already hit to prevent multi-proc per frame/pierce
+  // Specific weapon states
+  returnState?: 'OUT' | 'RETURN';
+  // Crow Aura props
+  attachedTo?: string; // ID of player to orbit
+  orbitAngle?: number;
+  orbitRadius?: number;
+  angularVelocity?: number;
+  hitAnimTimer?: number;
+  facing?: 'LEFT' | 'RIGHT';
 }
 
 export interface ItemDrop extends Entity {
@@ -135,6 +189,8 @@ export interface Particle extends Entity {
   maxLife: number;
   scale: number;
   attachedTo?: string; // ID of entity to follow
+  // Atmospheric props
+  drift?: Vector;
 }
 
 export interface FloatingText {
@@ -154,17 +210,18 @@ export interface Obstacle extends Entity {
     maxHp: number;
     destructible: boolean;
     rotation: number;
-    material: 'WOOD' | 'STONE' | 'METAL' | 'CRYSTAL' | 'FLESH';
+    material: 'WOOD' | 'STONE' | 'METAL' | 'CRYSTAL' | 'FLESH' | 'PLANT';
     isCover?: boolean;
-    subtype?: 'TREE' | 'ROCK' | 'BENCH' | 'CAR' | 'CRYSTAL' | 'WALL' | 'GEYSER' | 'PUDDLE' | 'LOG';
+    subtype?: 'TREE' | 'ROCK' | 'BENCH' | 'CAR' | 'CRYSTAL' | 'WALL' | 'GEYSER' | 'PUDDLE' | 'LOG' |
+              'BERRY_BUSH' | 'STATUE' | 'FIRE_HYDRANT' | 'TRASH_CAN' | 'SPORE_POD' | 'SLIME_POOL' | 'PINE' | 'OAK';
     // Distinct properties
     explosive?: boolean;
     explodeDamage?: number;
     explodeRadius?: number;
-    emitType?: 'SMOKE' | 'WATER' | 'GLITTER' | 'FIRE';
+    emitType?: 'SMOKE' | 'WATER' | 'GLITTER' | 'FIRE' | 'POISON';
 }
 
-export type WeaponType = 'NUT_THROW' | 'CROW_AURA' | 'ACORN_CANNON' | 'FEATHER_STORM';
+export type WeaponType = 'NUT_THROW' | 'CROW_AURA' | 'ACORN_CANNON' | 'FEATHER_STORM' | 'PINE_NEEDLE' | 'SAP_PUDDLE' | 'BOOMERANG';
 
 export interface Weapon {
   type: WeaponType;
