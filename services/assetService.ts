@@ -15,10 +15,10 @@ const SPRITES = {
     ALIEN: `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgzMiwzMikiPgogICAgPCEtLSBIZWFkIC0tPgogICAgPHBhdGggZD0iTS0xMiAtMTUgQy0yMCAtNSAtMjAgNSAtMTAgMTUgTDAgMjAgTDEwIDE1IEMgMjAgNSAyMCAtNSAxMiAtMTUgUTAgLTI1IC0xMiAtMTUiIGZpbGw9IiM5RjdBRUEiIHN0cm9rZT0iIzU1M0M5QSIgc3Ryb2tlLXdpZHRoPSIyIi8+CiAgICA8IS0tIEV5ZXMgLS0+CiAgICA8ZWxsaXBzZSBjeD0iLTYiIGN5PSItNSIgcng9IjQiIHJ5PSI2IiBmaWxsPSIjMDAwIi8+CiAgICA8ZWxsaXBzZSBjeD0iNiIgY3k9Ii01IiByeD0iNCIgcnk9IjYiIGZpbGw9IiMwMDAiLz4KICAgIDxlbGxpcHNlIGN4PSIwIiBjeT0iLTgiIHJ4PSIyIiByeT0iMyIgZmlsbD0iIzAwMCIvPgogICAgPCEtLSBTcG90cyAtLT4KICAgIDxjaXJjbGUgY3g9IjgiIGN5PSI4IiByPSIxIiBmaWxsPSIjREREYiIG9wYWNpdHk9IjAuNSIvPgogICAgPGNpcmNsZSBjeD0iLTgiIGN5PSIxMCIgcj0iMS41IiBmaWxsPSIjREREYiIG9wYWNpdHk9IjAuNSIvPgogIDwvZz4KPC9zdmc+`,
 
     // LPC Sprite Sheets (Using raw.githubusercontent.com for direct image access)
-    // STAGE 1 MINIONS
-    GOBLIN: `https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/main/public/assets/sprites/goblin1.png`,
-    ZOMBIE: `https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/main/public/assets/sprites/zombie1.png`,
-    GNOME: `https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/main/public/assets/sprites/gnome1.png`,
+    // Updated naming convention '1-1' for Stage 1 assets
+    GOBLIN: `https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/main/public/assets/sprites/goblin1-1.png`,
+    ZOMBIE: `https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/main/public/assets/sprites/zombie1-1.png`,
+    GNOME: `https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/main/public/assets/sprites/gnome1-1.png`,
     
     // STAGE 1 VARIANTS (Placeholders)
     GOBLIN_SB: `https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/main/public/assets/sprites/goblinSB1-1.png`,
@@ -38,7 +38,13 @@ const loadImage = (src: string): Promise<HTMLImageElement> => {
             console.warn("Failed to load image, using fallback", src);
             resolve(img); // Resolve anyway to prevent crash
         };
-        img.src = src;
+        // Add cache buster to ensure we get the latest file from GitHub
+        // Use a simple timestamp if it's a http URL
+        if (src.startsWith('http')) {
+            img.src = `${src}?t=${Date.now()}`;
+        } else {
+            img.src = src;
+        }
     });
 };
 
