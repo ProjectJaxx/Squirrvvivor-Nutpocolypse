@@ -250,6 +250,7 @@ const App: React.FC = () => {
                         time={hudStats.time}
                         wave={currentStage} // Using stage as wave
                         maxWaveTime={180 * 60}
+                        onPause={togglePause}
                     />
                 )}
                 

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Player } from '../types';
-import { Skull, Clock, Trophy } from 'lucide-react';
+import { Skull, Clock, Trophy, Pause } from 'lucide-react';
 
 interface GameHUDProps {
     player: Player;
@@ -11,9 +11,10 @@ interface GameHUDProps {
     time: number;
     wave: number;
     maxWaveTime: number;
+    onPause?: () => void;
 }
 
-export const GameHUD: React.FC<GameHUDProps> = ({ player, score, kills, nuts, time, wave, maxWaveTime }) => {
+export const GameHUD: React.FC<GameHUDProps> = ({ player, score, kills, nuts, time, wave, maxWaveTime, onPause }) => {
     
     // Format Time
     const mins = Math.floor(time / 3600);
@@ -41,12 +42,16 @@ export const GameHUD: React.FC<GameHUDProps> = ({ player, score, kills, nuts, ti
                     </div>
                 </div>
 
-                {/* CENTER: Timer */}
+                {/* CENTER: Timer (Click to Pause) */}
                 <div className="flex-1 flex justify-center pb-1">
-                     <div className="bg-gray-900/90 backdrop-blur-md text-white font-mono text-4xl font-bold px-8 py-2 rounded-xl border-2 border-gray-700 shadow-2xl flex items-center gap-3 transform -translate-y-2">
-                        <Clock size={28} className="text-amber-500" />
+                     <button 
+                        onClick={onPause}
+                        className="bg-gray-900/90 backdrop-blur-md text-white font-mono text-4xl font-bold px-8 py-2 rounded-xl border-2 border-gray-700 shadow-2xl flex items-center gap-3 transform -translate-y-2 cursor-pointer hover:border-amber-500/50 hover:scale-105 active:scale-95 transition-all group"
+                        title="Pause Game"
+                     >
+                        <Clock size={28} className="text-amber-500 group-hover:text-amber-400" />
                         <span className="tracking-widest drop-shadow-md">{timeStr}</span>
-                    </div>
+                    </button>
                 </div>
 
                 {/* RIGHT: Nuts & Score */}
