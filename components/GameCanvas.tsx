@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
     GameCanvasProps, 
     GameState, 
@@ -22,6 +22,7 @@ import {
 import { ALL_UPGRADES } from '../upgrades';
 import { playSound, playMusic, stopMusic } from '../services/soundService';
 import { drawSquirrel, drawDashEffect, drawEnemy, drawProjectile, drawExplosion, drawParticle, drawTree } from '../services/renderService';
+import { Zap, Wind } from 'lucide-react';
 
 // Cleaner, subtle background pattern with grass blades/texture
 const createGroundPattern = (biome: string, ctx: CanvasRenderingContext2D) => {
@@ -124,6 +125,19 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
     const mouseRef = useRef<Vector>({ x: 0, y: 0 });
     const groundPatternRef = useRef<CanvasPattern | null>(null);
     
+    // Joystick & Mobile Controls
+    const joystickRef = useRef<{
+        active: boolean;
+        origin: Vector;
+        current: Vector;
+        vector: Vector; // Normalized output -1 to 1
+        identifier: number | null;
+    }>({ active: false, origin: {x:0, y:0}, current: {x:0, y:0}, vector: {x:0, y:0}, identifier: null });
+    
+    // Virtual Button State
+    const [mobileActions, setMobileActions] = useState({ dash: false, ability: false });
+    const actionsRef = useRef({ dash: false, ability: false }); // Ref for game loop to avoid stale state
+
     // Camera Rendering Refs
     const cameraRef = useRef<Vector>({ x: 0, y: 0 });
 
@@ -254,33 +268,8 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
             }
 
             // Spacebar Dash
-            if (e.code === 'Space' && stateRef.current && !paused) {
-                 const p = stateRef.current.player;
-                 if (p.stamina >= 30 && p.dashCooldown <= 0) {
-                     p.isDashing = true;
-                     p.dashCooldown = 30;
-                     p.invincibleTimer = 15; // I-frames during dash
-                     p.stamina -= 30;
-                     
-                     // Dash direction
-                     let dx = 0, dy = 0;
-                     if (keysRef.current['w'] || keysRef.current['ArrowUp']) dy -= 1;
-                     if (keysRef.current['s'] || keysRef.current['ArrowDown']) dy += 1;
-                     if (keysRef.current['a'] || keysRef.current['ArrowLeft']) dx -= 1;
-                     if (keysRef.current['d'] || keysRef.current['ArrowRight']) dx += 1;
-                     
-                     // If no input, dash in facing direction
-                     if (dx === 0 && dy === 0) {
-                         dx = p.facing === 'RIGHT' ? 1 : -1;
-                     }
-                     
-                     const mag = Math.sqrt(dx*dx + dy*dy);
-                     if (mag > 0) {
-                        p.velocity.x = (dx / mag) * 15; // Burst speed
-                        p.velocity.y = (dy / mag) * 15;
-                     }
-                     if (soundEnabled) playSound('AURA'); // Reusing Aura sound for dash whoosh
-                 }
+            if (e.code === 'Space') {
+                 triggerDash();
             }
         };
         const handleKeyUp = (e: KeyboardEvent) => keysRef.current[e.key] = false;
@@ -345,8 +334,133 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
         };
     }, [paused]);
 
+    const triggerDash = () => {
+        const state = stateRef.current;
+        if (!state || paused) return;
+        const p = state.player;
+        
+        if (p.stamina >= 30 && p.dashCooldown <= 0) {
+             p.isDashing = true;
+             p.dashCooldown = 30;
+             p.invincibleTimer = 15; // I-frames during dash
+             p.stamina -= 30;
+             
+             // Dash direction (Keys or Joystick)
+             let dx = 0, dy = 0;
+             if (keysRef.current['w'] || keysRef.current['ArrowUp']) dy -= 1;
+             if (keysRef.current['s'] || keysRef.current['ArrowDown']) dy += 1;
+             if (keysRef.current['a'] || keysRef.current['ArrowLeft']) dx -= 1;
+             if (keysRef.current['d'] || keysRef.current['ArrowRight']) dx += 1;
+             
+             if (joystickRef.current.active) {
+                 dx = joystickRef.current.vector.x;
+                 dy = joystickRef.current.vector.y;
+             }
+
+             // If no input, dash in facing direction
+             if (dx === 0 && dy === 0) {
+                 dx = p.facing === 'RIGHT' ? 1 : -1;
+             }
+             
+             const mag = Math.sqrt(dx*dx + dy*dy);
+             if (mag > 0) {
+                p.velocity.x = (dx / mag) * 15; // Burst speed
+                p.velocity.y = (dy / mag) * 15;
+             }
+             if (soundEnabled) playSound('AURA');
+         }
+    };
+
+    const triggerAbility = () => {
+        const state = stateRef.current;
+        if (!state || paused) return;
+        const p = state.player;
+        if (p.activeAbility && p.activeAbility.cooldownTimer <= 0) {
+            p.activeAbility.activeTimer = p.activeAbility.duration;
+            p.activeAbility.cooldownTimer = p.activeAbility.cooldown;
+            if (soundEnabled) playSound('LEVELUP');
+        }
+    };
+
+    // --- TOUCH HANDLERS (Mobile) ---
+    const handleTouchStart = (e: React.TouchEvent) => {
+        // Prevent default only if necessary, but we need UI interactions
+        // e.preventDefault(); // CAREFUL: this stops buttons from working if not handled right
+        
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            
+            // Check if touch is on left side (Joystick zone)
+            // Using 40% of width to leave center clear
+            if (t.clientX < window.innerWidth * 0.45) {
+                if (!joystickRef.current.active) {
+                    joystickRef.current = {
+                        active: true,
+                        origin: { x: t.clientX, y: t.clientY },
+                        current: { x: t.clientX, y: t.clientY },
+                        vector: { x: 0, y: 0 },
+                        identifier: t.identifier
+                    };
+                }
+            }
+        }
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (!joystickRef.current.active) return;
+        
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            if (t.identifier === joystickRef.current.identifier) {
+                // Update position
+                const maxRadius = 50;
+                let dx = t.clientX - joystickRef.current.origin.x;
+                let dy = t.clientY - joystickRef.current.origin.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                // Clamp visual
+                if (dist > maxRadius) {
+                    const ratio = maxRadius / dist;
+                    dx *= ratio;
+                    dy *= ratio;
+                }
+                
+                joystickRef.current.current = {
+                    x: joystickRef.current.origin.x + dx,
+                    y: joystickRef.current.origin.y + dy
+                };
+                
+                // Normalize Vector
+                joystickRef.current.vector = {
+                    x: dx / maxRadius,
+                    y: dy / maxRadius
+                };
+            }
+        }
+    };
+
+    const handleTouchEnd = (e: React.TouchEvent) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            if (t.identifier === joystickRef.current.identifier) {
+                joystickRef.current.active = false;
+                joystickRef.current.vector = { x: 0, y: 0 };
+            }
+        }
+    };
+
     const update = (state: GameState) => {
         const { player } = state;
+
+        // Check Action Refs (Buttons)
+        if (actionsRef.current.dash) {
+            triggerDash();
+            actionsRef.current.dash = false; // consume
+        }
+        if (actionsRef.current.ability) {
+            triggerAbility();
+            actionsRef.current.ability = false; // consume
+        }
 
         // Screen Shake Decay
         if (state.shake.duration > 0) {
@@ -361,17 +475,33 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
         // 1. PHYSICS MOVEMENT
         let dx = 0;
         let dy = 0;
+        
+        // Keyboard Input
         if (keysRef.current['w'] || keysRef.current['ArrowUp']) dy -= 1;
         if (keysRef.current['s'] || keysRef.current['ArrowDown']) dy += 1;
         if (keysRef.current['a'] || keysRef.current['ArrowLeft']) dx -= 1;
         if (keysRef.current['d'] || keysRef.current['ArrowRight']) dx += 1;
 
-        // Normalize Input
-        if (dx !== 0 || dy !== 0) {
-            const mag = Math.sqrt(dx*dx + dy*dy);
+        // Joystick Input (Override or Combine? Combine allows hybrid, override usually better)
+        if (joystickRef.current.active) {
+            // If Joystick is active, it takes priority or mixes? 
+            // Let's just use it if keys are idle, or add them.
+            // Actually, adding them feels natural if someone tries both.
+            dx += joystickRef.current.vector.x;
+            dy += joystickRef.current.vector.y;
+        }
+
+        // Normalize Input (Clamp magnitude to 1)
+        const mag = Math.sqrt(dx*dx + dy*dy);
+        if (mag > 1) {
             dx /= mag;
             dy /= mag;
-            
+        } else if (mag > 0 && mag < 0.1) {
+            // Deadzone
+            dx = 0; dy = 0;
+        }
+
+        if (dx !== 0 || dy !== 0) {
             // Apply Acceleration
             if (!player.isDashing) {
                 player.velocity.x += dx * player.acceleration;
@@ -1555,14 +1685,68 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
         });
 
         ctx.restore();
+        
+        // --- DRAW JOYSTICK ---
+        // We draw it on top of everything in screen space (not camera space)
+        if (joystickRef.current.active) {
+            ctx.save();
+            const { origin, current } = joystickRef.current;
+            
+            // Base
+            ctx.beginPath();
+            ctx.arc(origin.x, origin.y, 50, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Knob
+            ctx.beginPath();
+            ctx.arc(current.x, current.y, 25, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fill();
+            
+            ctx.restore();
+        }
     };
 
     return (
-        <canvas 
-            ref={canvasRef} 
-            width={CANVAS_WIDTH} 
-            height={CANVAS_HEIGHT}
-            className="block cursor-crosshair"
-        />
+        <div 
+            className="w-full h-full relative touch-none"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+        >
+            <canvas 
+                ref={canvasRef} 
+                width={CANVAS_WIDTH} 
+                height={CANVAS_HEIGHT}
+                className="block w-full h-full"
+            />
+            
+            {/* Mobile Action Buttons Overlay */}
+            <div className="absolute bottom-8 right-8 flex flex-col gap-4 pointer-events-auto">
+                <button 
+                    className="w-16 h-16 rounded-full bg-blue-600/80 border-2 border-white/50 flex items-center justify-center text-white active:scale-95 transition-transform shadow-lg"
+                    onTouchStart={(e) => { e.stopPropagation(); actionsRef.current.ability = true; setMobileActions(p => ({...p, ability: true})); }}
+                    onTouchEnd={() => setMobileActions(p => ({...p, ability: false}))}
+                    onMouseDown={(e) => { e.stopPropagation(); actionsRef.current.ability = true; setMobileActions(p => ({...p, ability: true})); }}
+                    onMouseUp={() => setMobileActions(p => ({...p, ability: false}))}
+                >
+                    <Zap size={32} />
+                </button>
+                
+                <button 
+                    className="w-20 h-20 rounded-full bg-amber-600/80 border-2 border-white/50 flex items-center justify-center text-white active:scale-95 transition-transform shadow-lg"
+                    onTouchStart={(e) => { e.stopPropagation(); actionsRef.current.dash = true; setMobileActions(p => ({...p, dash: true})); }}
+                    onTouchEnd={() => setMobileActions(p => ({...p, dash: false}))}
+                    onMouseDown={(e) => { e.stopPropagation(); actionsRef.current.dash = true; setMobileActions(p => ({...p, dash: true})); }}
+                    onMouseUp={() => setMobileActions(p => ({...p, dash: false}))}
+                >
+                    <Wind size={40} />
+                </button>
+            </div>
+        </div>
     );
 };
