@@ -1,5 +1,5 @@
 
-import { Player, Enemy, Projectile, Particle, Obstacle } from '../types';
+import { Player, Enemy, Projectile, Particle, Obstacle, ItemDrop } from '../types';
 
 /**
  * Procedurally draws a vector squirrel based on its current state and character type.
@@ -63,6 +63,114 @@ export const drawSquirrel = (
   }
 
   ctx.restore();
+};
+
+export const drawDrop = (ctx: CanvasRenderingContext2D, drop: ItemDrop, time: number) => {
+    ctx.save();
+    ctx.translate(drop.x, drop.y);
+
+    // Floating animation (Bobbing)
+    const bob = Math.sin(time * 0.1 + (drop.x % 10)) * 3;
+    ctx.translate(0, bob);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(0, 12 - bob, drop.radius * 0.8, drop.radius * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (drop.kind === 'XP') {
+        // Magical Blue Crystal Acorn
+        ctx.rotate(Math.sin(time * 0.05) * 0.2); // Gentle sway
+
+        // Glow
+        ctx.shadowColor = '#4299e1';
+        ctx.shadowBlur = 10;
+
+        // Nut Body (Crystal shape-ish)
+        ctx.fillStyle = '#63B3ED'; // Light Blue
+        ctx.beginPath();
+        ctx.moveTo(0, drop.radius);
+        // Bevelled acorn shape
+        ctx.bezierCurveTo(drop.radius, drop.radius * 0.5, drop.radius, -drop.radius * 0.5, 0, -drop.radius * 0.8);
+        ctx.bezierCurveTo(-drop.radius, -drop.radius * 0.5, -drop.radius, drop.radius * 0.5, 0, drop.radius);
+        ctx.fill();
+
+        // Internal crystal refraction lines
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, drop.radius); ctx.lineTo(drop.radius*0.4, -drop.radius*0.2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, drop.radius); ctx.lineTo(-drop.radius*0.4, -drop.radius*0.2); ctx.stroke();
+
+        // Cap
+        ctx.fillStyle = '#2B6CB0'; // Dark Blue
+        ctx.beginPath();
+        ctx.arc(0, -drop.radius * 0.8, drop.radius * 0.9, Math.PI, 0);
+        ctx.fill();
+        
+        // Cap Scale Texture
+        ctx.strokeStyle = '#4299e1';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(0, -drop.radius * 0.8, drop.radius * 0.6, Math.PI, 0); ctx.stroke();
+
+        // Highlight/Sparkle
+        if (Math.random() > 0.95) {
+             ctx.fillStyle = 'white';
+             ctx.beginPath(); ctx.arc(-drop.radius*0.3, 0, 1.5, 0, Math.PI*2); ctx.fill();
+        }
+
+    } else if (drop.kind === 'GOLD') {
+        // Golden Walnut
+        // Rotate slowly to show off shine
+        ctx.scale(Math.cos(time * 0.05), 1); 
+
+        // Glow
+        ctx.shadowColor = '#F6E05E';
+        ctx.shadowBlur = 5;
+
+        ctx.fillStyle = '#D69E2E'; // Gold Base
+        ctx.beginPath();
+        ctx.arc(0, 0, drop.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Wrinkles (Walnut texture)
+        ctx.strokeStyle = '#975A16'; // Darker Gold/Brown
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -drop.radius);
+        ctx.bezierCurveTo(drop.radius * 0.5, -drop.radius * 0.5, -drop.radius * 0.5, drop.radius * 0.5, 0, drop.radius);
+        ctx.stroke();
+        
+        // Shine
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath();
+        ctx.arc(-drop.radius*0.4, -drop.radius*0.4, 2, 0, Math.PI*2);
+        ctx.fill();
+
+    } else if (drop.kind === 'HEALTH_PACK') {
+        // Red Heart-Nut (Chestnut/Berry style)
+        
+        ctx.shadowColor = '#FC8181';
+        ctx.shadowBlur = 8;
+
+        ctx.fillStyle = '#E53E3E'; // Red
+        ctx.beginPath();
+        // Heart/Chestnut shape
+        const r = drop.radius;
+        ctx.moveTo(0, r); 
+        ctx.bezierCurveTo(r * 1.3, 0, r * 1.3, -r, 0, -r * 0.5);
+        ctx.bezierCurveTo(-r * 1.3, -r, -r * 1.3, 0, 0, r);
+        ctx.fill();
+
+        // White Cross
+        ctx.fillStyle = 'white';
+        const w = r * 0.8;
+        const thick = w * 0.3;
+        ctx.fillRect(-w/2, -thick/2 - 2, w, thick);
+        ctx.fillRect(-thick/2, -w/2 - 2, thick, w);
+    }
+
+    ctx.restore();
 };
 
 export const drawProjectile = (ctx: CanvasRenderingContext2D, p: Projectile, time: number) => {

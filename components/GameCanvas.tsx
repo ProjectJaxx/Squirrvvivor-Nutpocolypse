@@ -21,7 +21,7 @@ import {
 } from '../constants';
 import { ALL_UPGRADES } from '../upgrades';
 import { playSound, playMusic, stopMusic } from '../services/soundService';
-import { drawSquirrel, drawDashEffect, drawEnemy, drawProjectile, drawExplosion, drawParticle, drawTree } from '../services/renderService';
+import { drawSquirrel, drawDashEffect, drawEnemy, drawProjectile, drawExplosion, drawParticle, drawTree, drawDrop } from '../services/renderService';
 import { Zap, Wind } from 'lucide-react';
 
 // Cleaner, subtle background pattern with grass blades/texture
@@ -123,9 +123,23 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
     // Virtual Button State
     const [mobileActions, setMobileActions] = useState({ dash: false, ability: false });
     const actionsRef = useRef({ dash: false, ability: false }); // Ref for game loop to avoid stale state
+    
+    // Ability UI State
+    const [abilityCooldownPct, setAbilityCooldownPct] = useState(0);
 
     // Camera Rendering Refs
     const cameraRef = useRef<Vector>({ x: 0, y: 0 });
+
+    // Handle Music Toggle dynamically
+    useEffect(() => {
+        if (!stateRef.current) return;
+        
+        if (musicEnabled && !paused) {
+            playMusic(stateRef.current.biome);
+        } else {
+            stopMusic();
+        }
+    }, [musicEnabled, paused]); // Add paused to deps if you want music to stop on pause
 
     // Initialize Game State
     useEffect(() => {
@@ -133,6 +147,7 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
         const biome = stageNumber === 1 ? 'PARK' : (stageNumber === 2 ? 'PARKING_LOT' : 'MARS');
         const config = BIOME_CONFIG[biome as keyof typeof BIOME_CONFIG] || BIOME_CONFIG.PARK;
         
+        // Initial music start
         if (musicEnabled) {
             try { playMusic(biome); } catch(e) { console.warn("Music play failed", e); }
         }
@@ -297,15 +312,27 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
                 update(currentState);
                 draw(ctx, currentState);
 
-                // Sync Stats to HUD
-                if (onStatsUpdate && currentState.time % 10 === 0) {
-                    onStatsUpdate({
-                        score: currentState.score,
-                        kills: currentState.kills,
-                        nuts: currentState.collectedNuts,
-                        time: currentState.time,
-                        player: currentState.player
-                    });
+                // Sync Stats to HUD and UI elements less frequently (every 5 frames = ~12fps update)
+                if (currentState.time % 5 === 0) {
+                    if (onStatsUpdate) {
+                        onStatsUpdate({
+                            score: currentState.score,
+                            kills: currentState.kills,
+                            nuts: currentState.collectedNuts,
+                            time: currentState.time,
+                            player: currentState.player
+                        });
+                    }
+                    
+                    // Update Ability Button Cooldown
+                    if (currentState.player.activeAbility) {
+                        const ab = currentState.player.activeAbility;
+                        if (ab.cooldownTimer > 0) {
+                            setAbilityCooldownPct((ab.cooldownTimer / ab.cooldown) * 100);
+                        } else {
+                            setAbilityCooldownPct(0);
+                        }
+                    }
                 }
             } catch (e) {
                 console.error("Game Loop Error", e);
@@ -1212,7 +1239,7 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
                             state.drops.push({
                                 id: `d-${Date.now()}`,
                                 x: e.x, y: e.y,
-                                radius: 5,
+                                radius: 8, // Increased from 5
                                 type: 'DROP',
                                 color: '#4299e1',
                                 kind: 'XP',
@@ -1222,7 +1249,7 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
                                 state.drops.push({
                                     id: `n-${Date.now()}`,
                                     x: e.x + 5, y: e.y,
-                                    radius: 6,
+                                    radius: 8, // Increased from 6
                                     type: 'DROP',
                                     color: '#d69e2e',
                                     kind: 'GOLD',
@@ -1313,7 +1340,7 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
                 state.drops.push({
                     id: `d-${Date.now()}`,
                     x: e.x, y: e.y,
-                    radius: 5,
+                    radius: 8, // Increased from 5
                     type: 'DROP',
                     color: '#4299e1',
                     kind: 'XP',
@@ -1323,7 +1350,7 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
                     state.drops.push({
                         id: `n-${Date.now()}`,
                         x: e.x + 5, y: e.y,
-                        radius: 6,
+                        radius: 8, // Increased from 6
                         type: 'DROP',
                         color: '#d69e2e',
                         kind: 'GOLD',
@@ -1336,7 +1363,7 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
                         id: `hp-${Date.now()}-${Math.random()}`,
                         x: e.x + (Math.random() * 10 - 5),
                         y: e.y + (Math.random() * 10 - 5),
-                        radius: 7,
+                        radius: 10, // Increased from 7
                         type: 'DROP',
                         color: '#e53e3e', // Red
                         kind: 'HEALTH_PACK',
@@ -1581,24 +1608,7 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
 
         // Draw Drops
         state.drops.forEach(drop => {
-             ctx.fillStyle = drop.color;
-             ctx.beginPath();
-             ctx.arc(drop.x, drop.y, drop.radius, 0, Math.PI * 2);
-             ctx.fill();
-             
-             // Detail on drops
-             if (drop.kind === 'HEALTH_PACK') {
-                 // White cross
-                 ctx.fillStyle = 'white';
-                 ctx.fillRect(drop.x - 4, drop.y - 1.5, 8, 3);
-                 ctx.fillRect(drop.x - 1.5, drop.y - 4, 3, 8);
-             } else {
-                 // Shine
-                 ctx.fillStyle = 'rgba(255,255,255,0.6)';
-                 ctx.beginPath();
-                 ctx.arc(drop.x - 2, drop.y - 2, 2, 0, Math.PI * 2);
-                 ctx.fill();
-             }
+             drawDrop(ctx, drop, state.time);
         });
 
         // Draw Puddles (Under Enemies)
@@ -1728,13 +1738,20 @@ export const GameCanvas: React.FC<ExtendedGameCanvasProps> = ({
             {/* Changed from bottom-8 right-8 to right-center */}
             <div className="absolute top-1/2 right-4 -translate-y-1/2 flex flex-col gap-6 pointer-events-auto z-40">
                 <button 
-                    className="w-12 h-12 rounded-full bg-blue-600/50 border-2 border-white/30 flex items-center justify-center text-white active:scale-95 transition-transform shadow-lg backdrop-blur-sm"
-                    onTouchStart={(e) => { e.stopPropagation(); actionsRef.current.ability = true; setMobileActions(p => ({...p, ability: true})); }}
+                    className={`w-12 h-12 rounded-full border-2 border-white/30 flex items-center justify-center text-white shadow-lg backdrop-blur-sm relative overflow-hidden ${abilityCooldownPct > 0 ? 'bg-gray-600/50 cursor-not-allowed opacity-70' : 'bg-blue-600/50 active:scale-95 transition-transform'}`}
+                    onTouchStart={(e) => { e.stopPropagation(); if (abilityCooldownPct <= 0) { actionsRef.current.ability = true; setMobileActions(p => ({...p, ability: true})); } }}
                     onTouchEnd={() => setMobileActions(p => ({...p, ability: false}))}
-                    onMouseDown={(e) => { e.stopPropagation(); actionsRef.current.ability = true; setMobileActions(p => ({...p, ability: true})); }}
+                    onMouseDown={(e) => { e.stopPropagation(); if (abilityCooldownPct <= 0) { actionsRef.current.ability = true; setMobileActions(p => ({...p, ability: true})); } }}
                     onMouseUp={() => setMobileActions(p => ({...p, ability: false}))}
+                    disabled={abilityCooldownPct > 0}
                 >
-                    <Zap size={24} />
+                    <Zap size={24} className={abilityCooldownPct > 0 ? 'opacity-50' : ''} />
+                    {abilityCooldownPct > 0 && (
+                        <div 
+                            className="absolute bottom-0 left-0 w-full bg-black/50 transition-all duration-100 ease-linear"
+                            style={{ height: `${abilityCooldownPct}%` }}
+                        />
+                    )}
                 </button>
                 
                 <button 
