@@ -1,5 +1,4 @@
 
-
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { GameState, Player, Upgrade, SquirrelCharacter, StageDuration, Enemy, Entity, Projectile, Weapon, Drop } from '../types';
 import { INITIAL_GAME_STATE, INITIAL_PLAYER, COLORS } from '../constants';
@@ -42,10 +41,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const requestRef = useRef<number>(0);
   const keysPressed = useRef<{ [key: string]: boolean }>({});
   
-  // Track window dimensions
+  // Touch Joystick State
+  const touchRef = useRef<{ 
+      active: boolean; 
+      origin: {x: number, y: number} | null; 
+      current: {x: number, y: number} | null;
+      vector: {x: number, y: number};
+  }>({
+      active: false,
+      origin: null,
+      current: null,
+      vector: {x: 0, y: 0}
+  });
+
+  // Track window dimensions & Pixel Ratio
   const [dimensions, setDimensions] = useState({ 
       width: typeof window !== 'undefined' ? window.innerWidth : 1280, 
-      height: typeof window !== 'undefined' ? window.innerHeight : 720 
+      height: typeof window !== 'undefined' ? window.innerHeight : 720,
+      dpr: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
   });
 
   // Pattern Caches
@@ -154,7 +167,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const handleResize = () => {
         setDimensions({
             width: window.innerWidth,
-            height: window.innerHeight
+            height: window.innerHeight,
+            dpr: window.devicePixelRatio || 1
         });
     };
     window.addEventListener('resize', handleResize);
@@ -229,8 +243,62 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         keysPressed.current[e.key.toLowerCase()] = false;
     };
 
+    // Touch Handlers
+    const handleTouchStart = (e: TouchEvent) => {
+        e.preventDefault(); // Prevent scrolling
+        const touch = e.touches[0];
+        if (touch) {
+            touchRef.current.active = true;
+            touchRef.current.origin = { x: touch.clientX, y: touch.clientY };
+            touchRef.current.current = { x: touch.clientX, y: touch.clientY };
+            touchRef.current.vector = { x: 0, y: 0 };
+        }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+        e.preventDefault();
+        if (!touchRef.current.active || !touchRef.current.origin) return;
+        
+        const touch = e.touches[0];
+        if (touch) {
+            touchRef.current.current = { x: touch.clientX, y: touch.clientY };
+            
+            const dx = touch.clientX - touchRef.current.origin.x;
+            const dy = touch.clientY - touchRef.current.origin.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const maxDist = 50; // Joystick radius
+            
+            // Normalize vector
+            const cappedDist = Math.min(dist, maxDist);
+            const normalizedDist = cappedDist / maxDist;
+            
+            if (dist > 0) {
+                touchRef.current.vector = {
+                    x: (dx / dist) * normalizedDist,
+                    y: (dy / dist) * normalizedDist
+                };
+            }
+        }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+        e.preventDefault();
+        touchRef.current.active = false;
+        touchRef.current.origin = null;
+        touchRef.current.current = null;
+        touchRef.current.vector = { x: 0, y: 0 };
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    
+    // Add touch listeners to canvas specifically or window
+    const canvas = canvasRef.current;
+    if (canvas) {
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    }
 
     if (musicEnabled) playMusic('PARK');
 
@@ -238,6 +306,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         window.removeEventListener('resize', handleResize);
         window.removeEventListener('keydown', handleKeyDown);
         window.removeEventListener('keyup', handleKeyUp);
+        
+        if (canvas) {
+            canvas.removeEventListener('touchstart', handleTouchStart);
+            canvas.removeEventListener('touchmove', handleTouchMove);
+            canvas.removeEventListener('touchend', handleTouchEnd);
+        }
+
         stopMusic();
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
@@ -257,22 +332,46 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // --- HIGH DPI SETUP ---
+    // Reset transform to identity (pixels) for clearing
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Clear using physical dimensions
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Scale for logic drawing (use logical coordinates)
+    const { dpr, width: logicalWidth, height: logicalHeight } = dimensions;
+    ctx.scale(dpr, dpr);
+    
     ctx.imageSmoothingEnabled = false;
 
     // --- UPDATE LOGIC ---
 
-    // 1. Player Movement
+    // 1. Player Movement (Keyboard + Touch)
     let dx = 0;
     let dy = 0;
+    
+    // Keyboard
     if (keysPressed.current['w'] || keysPressed.current['arrowup']) dy -= 1;
     if (keysPressed.current['s'] || keysPressed.current['arrowdown']) dy += 1;
     if (keysPressed.current['a'] || keysPressed.current['arrowleft']) dx -= 1;
     if (keysPressed.current['d'] || keysPressed.current['arrowright']) dx += 1;
     
+    // Touch Joystick Override
+    if (touchRef.current.active) {
+        dx = touchRef.current.vector.x;
+        dy = touchRef.current.vector.y;
+    }
+
     if (dx !== 0 || dy !== 0) {
+        // Normalize length if exceeding 1 (mainly for keyboard diagonals)
         const length = Math.sqrt(dx * dx + dy * dy);
-        dx = (dx / length) * state.player.speed;
-        dy = (dy / length) * state.player.speed;
+        if (length > 1) {
+            dx = dx / length;
+            dy = dy / length;
+        }
+
+        dx *= state.player.speed;
+        dy *= state.player.speed;
         
         let nextX = state.player.x + dx;
         let nextY = state.player.y + dy;
@@ -367,29 +466,31 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
     }
 
-    // 2. Enemy Spawning
+    // 2. Enemy Spawning (DIFFICULTY TWEAKED)
     const spawnChance = 0.015 + (state.wave * 0.003);
     const maxEnemies = 25 + (state.wave * 5); 
 
     if (Math.random() < spawnChance && state.enemies.length < maxEnemies) {
          const angle = Math.random() * Math.PI * 2;
-         const spawnDist = Math.max(canvas.width, canvas.height) / 2 + 100;
+         // Use logical dimensions for spawn distance
+         const spawnDist = Math.max(logicalWidth, logicalHeight) / 2 + 100;
          
          const enemyTypes = ['ZOMBIE', 'GOBLIN', 'GNOME'];
          const selectedType = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
          
          let color = '#68d391';
          let speed = 2 + (Math.random() * 0.5);
-         let hp = 20 + (state.wave * 2);
+         // Increased base HP and scaling
+         let hp = 35 + (state.wave * 5); 
 
          if (selectedType === 'GOBLIN') {
              color = '#a0aec0';
              speed = 2.5;
-             hp = 15 + (state.wave * 1.5);
+             hp = 30 + (state.wave * 4);
          } else if (selectedType === 'GNOME') {
              color = '#b83280';
              speed = 1.5;
-             hp = 30 + (state.wave * 3);
+             hp = 80 + (state.wave * 12); // Tanky
          }
 
          state.enemies.push({
@@ -700,25 +801,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     state.time++;
 
     // --- RENDER SYSTEM ---
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // 1. Background
     ctx.fillStyle = COLORS.parkBg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Use logical dimensions
+    ctx.fillRect(0, 0, logicalWidth, logicalHeight);
     
     if (grassPatternRef.current) {
         ctx.save();
-        const camX = canvas.width / 2 - state.player.x;
-        const camY = canvas.height / 2 - state.player.y;
+        const camX = logicalWidth / 2 - state.player.x;
+        const camY = logicalHeight / 2 - state.player.y;
         ctx.translate(camX, camY);
         ctx.fillStyle = grassPatternRef.current;
-        ctx.fillRect(state.player.x - canvas.width, state.player.y - canvas.height, canvas.width * 2, canvas.height * 2);
+        // Draw large enough area to cover rotation/movement
+        ctx.fillRect(state.player.x - logicalWidth, state.player.y - logicalHeight, logicalWidth * 2, logicalHeight * 2);
         ctx.restore();
     }
 
     // Camera Transform
     ctx.save();
-    ctx.translate(canvas.width / 2 - state.player.x, canvas.height / 2 - state.player.y);
+    ctx.translate(logicalWidth / 2 - state.player.x, logicalHeight / 2 - state.player.y);
 
     // 2. Borders
     if (borderPatternRef.current) {
@@ -861,9 +963,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     renderParticles(ctx, state.particles);
 
     ctx.restore();
+    
+    // --- UI OVERLAY RENDER (Joystick) ---
+    // Drawn in logical pixels because context is scaled
+    if (touchRef.current.active && touchRef.current.origin && touchRef.current.current) {
+        const { origin, current } = touchRef.current;
+        const maxDist = 50;
+        
+        // Base
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.beginPath();
+        ctx.arc(origin.x, origin.y, maxDist, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Thumbstick
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.beginPath();
+        
+        // Clamp visually within base
+        const dx = current.x - origin.x;
+        const dy = current.y - origin.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const clamp = Math.min(dist, maxDist);
+        const ratio = dist > 0 ? clamp/dist : 0;
+        
+        ctx.arc(origin.x + dx * ratio, origin.y + dy * ratio, 20, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
 
     requestRef.current = requestAnimationFrame(gameLoop);
-  }, [paused, onGameOver, onLevelUp, onStatsUpdate, soundEnabled]);
+  }, [paused, onGameOver, onLevelUp, onStatsUpdate, soundEnabled, dimensions]); // Add dimensions dependency
 
   useEffect(() => {
     requestRef.current = requestAnimationFrame(gameLoop);
@@ -875,9 +1009,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   return (
     <canvas 
         ref={canvasRef}
-        width={dimensions.width}
-        height={dimensions.height}
-        className="block w-full h-full bg-gray-900"
+        width={dimensions.width * dimensions.dpr} // Physical pixels
+        height={dimensions.height * dimensions.dpr} // Physical pixels
+        className="block w-full h-full bg-gray-900 touch-none"
     />
   );
 };
