@@ -1,4 +1,5 @@
 
+
 export type Vector = { x: number; y: number };
 
 export interface Entity {
@@ -10,6 +11,7 @@ export interface Entity {
   type: string;
   rotation?: number;
   opacity?: number;
+  variant?: number; // Visual variation seed (0-9)
 }
 
 export type AppState = 'LOADING' | 'SAVE_SELECT' | 'MENU' | 'BASE_UPGRADES' | 'GAME' | 'PAUSED' | 'LEVEL_UP' | 'GAME_OVER' | 'STAGE_CLEAR' | 'SETTINGS';
@@ -69,6 +71,7 @@ export interface Player extends Entity {
   revives: number;
   damageBonus?: number;
   cooldownReduction?: number;
+  filter?: string;
 }
 
 export interface Enemy extends Entity {
@@ -114,12 +117,19 @@ export interface Projectile extends Entity {
   weaponType?: string;
   pierce?: number;
   rotation?: number;
+  variant?: number;
+}
+
+export interface Companion extends Entity {
+  velocity: Vector;
+  facing: 'LEFT' | 'RIGHT';
+  secondaryColor?: string;
 }
 
 export interface GameState {
   player: Player;
   enemies: Enemy[];
-  companions: Entity[];
+  companions: Companion[];
   projectiles: Projectile[];
   drops: Drop[];
   particles: Particle[];

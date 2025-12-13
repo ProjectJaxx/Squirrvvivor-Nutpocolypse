@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { GameState, Player, Upgrade, SquirrelCharacter, StageDuration, Enemy, Entity, Projectile, Weapon } from '../types';
+import { GameState, Player, Upgrade, SquirrelCharacter, StageDuration, Enemy, Entity, Projectile, Weapon, Drop } from '../types';
 import { INITIAL_GAME_STATE, INITIAL_PLAYER, COLORS } from '../constants';
 import { ALL_UPGRADES } from '../upgrades';
 import { playSound, playMusic, stopMusic } from '../services/soundService';
@@ -304,6 +304,67 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     state.player.x = Math.max(-MAP_LIMIT + 20, Math.min(MAP_LIMIT - 20, state.player.x));
     state.player.y = Math.max(-MAP_LIMIT + 20, Math.min(MAP_LIMIT - 20, state.player.y));
 
+    // 1.5 Companions (Scurry) Logic
+    if (state.companions.length < state.player.maxCompanions) {
+        // Spawn companion near player
+        state.companions.push({
+            id: `comp-${Date.now()}-${state.companions.length}`,
+            x: state.player.x + (Math.random() - 0.5) * 50,
+            y: state.player.y + (Math.random() - 0.5) * 50,
+            radius: 12,
+            type: 'COMPANION',
+            color: '#FBD38D', // Lighter squirrel color
+            facing: 'RIGHT',
+            velocity: { x: 0, y: 0 },
+            variant: 0 // Cooldown tracker for shooting
+        });
+    }
+
+    // Companion Behavior
+    for (const comp of state.companions) {
+        // Follow Player
+        const dist = Math.hypot(state.player.x - comp.x, state.player.y - comp.y);
+        if (dist > 60) {
+            const angle = Math.atan2(state.player.y - comp.y, state.player.x - comp.x);
+            comp.x += Math.cos(angle) * (state.player.speed * 0.9);
+            comp.y += Math.sin(angle) * (state.player.speed * 0.9);
+            comp.facing = Math.cos(angle) > 0 ? 'RIGHT' : 'LEFT';
+        }
+
+        // Companion Combat (Shoot nuts)
+        if (comp.variant !== undefined) comp.variant--; // Cooldown
+        if ((comp.variant === undefined || comp.variant <= 0) && state.enemies.length > 0) {
+            // Find nearest enemy
+            let nearest = null;
+            let minDist = 400;
+            for (const e of state.enemies) {
+                const d = Math.hypot(e.x - comp.x, e.y - comp.y);
+                if (d < minDist) {
+                    minDist = d;
+                    nearest = e;
+                }
+            }
+
+            if (nearest) {
+                const angle = Math.atan2(nearest.y - comp.y, nearest.x - comp.x);
+                state.projectiles.push({
+                    id: `cp-${Date.now()}-${Math.random()}`,
+                    x: comp.x, y: comp.y,
+                    velocity: { x: Math.cos(angle) * 6, y: Math.sin(angle) * 6 },
+                    damage: 10,
+                    life: 60,
+                    source: 'PLAYER',
+                    weaponType: 'NUT_THROW', // Re-use basic nut logic
+                    radius: 4,
+                    color: '#ECC94B',
+                    type: 'PROJECTILE',
+                    variant: 0 // Acorn
+                });
+                comp.variant = 90; // 1.5s cooldown
+            }
+        }
+    }
+
     // 2. Enemy Spawning
     const spawnChance = 0.015 + (state.wave * 0.003);
     const maxEnemies = 25 + (state.wave * 5); 
@@ -369,8 +430,51 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     if (state.player.invincibleTimer > 0) state.player.invincibleTimer--;
 
     // 4. Weapons & Projectiles
-    // --- Update Cooldowns & Fire ---
+    
+    // --- SPECIAL: CROW AURA (Persistent) ---
+    const crowWeapon = state.player.weapons.find(w => w.type === 'CROW_AURA');
+    if (crowWeapon) {
+        // Manage Crow Population
+        const existingCrows = state.projectiles.filter(p => p.weaponType === 'CROW_AURA');
+        if (existingCrows.length < crowWeapon.amount) {
+             for(let i=existingCrows.length; i<crowWeapon.amount; i++) {
+                 state.projectiles.push({
+                     id: `crow-${Date.now()}-${i}`,
+                     x: state.player.x,
+                     y: state.player.y,
+                     velocity: { x: 0, y: 0 },
+                     damage: crowWeapon.damage,
+                     life: 999999, // Persistent
+                     source: 'PLAYER',
+                     weaponType: 'CROW_AURA',
+                     radius: 12,
+                     color: 'black',
+                     type: 'PROJECTILE',
+                     variant: i
+                 });
+             }
+        }
+
+        // Update Crow Orbits
+        const crows = state.projectiles.filter(p => p.weaponType === 'CROW_AURA');
+        crows.forEach((p, index) => {
+            const totalCrows = crows.length;
+            const spacing = (Math.PI * 2) / totalCrows;
+            const orbitSpeed = crowWeapon.speed || 0.05;
+            const angle = (state.time * orbitSpeed) + (index * spacing);
+            const orbitRadius = crowWeapon.area;
+            
+            p.x = state.player.x + Math.cos(angle) * orbitRadius;
+            p.y = state.player.y + Math.sin(angle) * orbitRadius;
+            p.rotation = angle + (Math.PI / 2); // Face forward along orbit
+            p.damage = crowWeapon.damage * (1 + (state.player.damageBonus || 0));
+        });
+    }
+
+    // --- Update Cooldowns & Fire Other Weapons ---
     for (const w of state.player.weapons) {
+        if (w.type === 'CROW_AURA') continue; // Handled above
+
         if (w.cooldownTimer > 0) w.cooldownTimer--;
         
         if (w.cooldownTimer <= 0) {
@@ -396,24 +500,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                      
                      state.projectiles.push({
                          id: `p-${Date.now()}-${i}`,
-                         x: state.player.x,
+                         x: state.player.x, // SAP_PUDDLE will drop at feet if speed is 0 or target if fired
                          y: state.player.y,
                          velocity: {
                              x: Math.cos(finalAngle) * w.speed,
                              y: Math.sin(finalAngle) * w.speed
                          },
                          damage: w.damage * (1 + (state.player.damageBonus || 0)),
-                         life: 60, // 1 sec duration
+                         life: w.duration || 60,
                          source: 'PLAYER',
                          weaponType: w.type,
                          radius: w.area,
                          color: '#D69E2E',
                          type: 'PROJECTILE',
-                         variant: Math.floor(Math.random() * 10) // Random variant seed for visual
+                         variant: Math.floor(Math.random() * 10) 
                      });
                  }
                  
-                 if (soundEnabled) playSound('NUT');
+                 if (soundEnabled && w.type !== 'SAP_PUDDLE') playSound('NUT');
                  
                  // Reset cooldown
                  const reduction = state.player.cooldownReduction || 0;
@@ -422,12 +526,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
     }
 
-    // --- Update Projectiles ---
+    // --- Update Projectiles & Collision ---
     for (let i = state.projectiles.length - 1; i >= 0; i--) {
         const p = state.projectiles[i];
-        p.x += p.velocity.x;
-        p.y += p.velocity.y;
-        p.rotation = (p.rotation || 0) + 0.3;
+        
+        // Move projectiles (except CROW_AURA which is moved by orbit logic, and SAP_PUDDLE which stays still)
+        if (p.weaponType !== 'CROW_AURA' && p.weaponType !== 'SAP_PUDDLE') {
+            p.x += p.velocity.x;
+            p.y += p.velocity.y;
+            p.rotation = (p.rotation || 0) + 0.3;
+        }
+        
         p.life--;
         
         let didHit = false;
@@ -436,28 +545,46 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         for (const e of state.enemies) {
             // Simple circular collision
             if (Math.hypot(e.x - p.x, e.y - p.y) < (e.radius + p.radius)) {
-                e.hp -= p.damage;
-                didHit = true;
                 
-                // Knockback
-                const kb = 2;
-                const angle = Math.atan2(e.y - p.x, e.x - p.x);
-                e.x += Math.cos(angle) * kb;
-                e.y += Math.sin(angle) * kb;
+                let applyDamage = true;
+                if (p.weaponType === 'CROW_AURA' || p.weaponType === 'SAP_PUDDLE') {
+                    // Periodic damage (every ~20 frames / 0.3s) for sustained zones
+                    if ((state.time + (p.variant || 0) * 10) % 20 !== 0) applyDamage = false;
+                }
 
-                // Hit Effect
-                state.particles.push({
-                    id: `hit-${Date.now()}-${Math.random()}`,
-                    x: p.x, y: p.y, radius: 4, color: '#FFF',
-                    life: 5, maxLife: 5, type: 'FLASH', velocity: {x:0, y:0}, scale:1
-                });
+                if (applyDamage) {
+                    e.hp -= p.damage;
+                    didHit = true;
+                    
+                    // Knockback
+                    if (p.weaponType !== 'CROW_AURA' && p.weaponType !== 'SAP_PUDDLE') {
+                        const kb = 2;
+                        const angle = Math.atan2(e.y - p.x, e.x - p.x);
+                        e.x += Math.cos(angle) * kb;
+                        e.y += Math.sin(angle) * kb;
+                    }
+
+                    // Hit Effect
+                    if (p.weaponType !== 'SAP_PUDDLE') {
+                        state.particles.push({
+                            id: `hit-${Date.now()}-${Math.random()}`,
+                            x: p.x, y: p.y, radius: 4, color: '#FFF',
+                            life: 5, maxLife: 5, type: 'FLASH', velocity: {x:0, y:0}, scale:1
+                        });
+                    }
+                    
+                    if(soundEnabled && p.weaponType !== 'SAP_PUDDLE') playSound('HIT');
+                }
                 
-                if(soundEnabled) playSound('HIT');
-                break; // Single target hit
+                // Break if not piercing
+                if (p.weaponType !== 'CROW_AURA' && p.weaponType !== 'BOOMERANG' && p.weaponType !== 'SAP_PUDDLE') {
+                    if (applyDamage) break; // Single target hit
+                }
             }
         }
 
-        if (didHit || p.life <= 0) {
+        // Cleanup (Don't kill crows, puddles or returning boomerangs prematurely)
+        if ((didHit && !['CROW_AURA', 'BOOMERANG', 'SAP_PUDDLE'].includes(p.weaponType || '')) || (p.life <= 0 && p.weaponType !== 'CROW_AURA')) {
              state.projectiles.splice(i, 1);
         }
     }
@@ -615,15 +742,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // 3. Drops
     for (const d of state.drops) {
-        ctx.fillStyle = d.color || '#fff';
-        ctx.beginPath();
-        ctx.arc(d.x, d.y, d.radius, 0, Math.PI * 2);
-        ctx.fill();
+        drawDrop(ctx, d, state.time);
     }
 
-    // 4. Z-Sorted Entities (Player, Enemies, Obstacles)
+    // 4. Z-Sorted Entities (Player, Companions, Enemies, Obstacles, Puddles)
+    
+    // 4.5 Sap Puddles (Render before entities so they are "under")
+    for (const p of state.projectiles) {
+        if (p.weaponType === 'SAP_PUDDLE') {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            drawSapPuddle(ctx, p.radius, state.time);
+            ctx.restore();
+        }
+    }
+
     const renderList = [
         { type: 'PLAYER', y: state.player.y, data: state.player },
+        ...state.companions.map(c => ({ type: 'COMPANION', y: c.y, data: c })),
         ...state.enemies.map(e => ({ type: 'ENEMY', y: e.y, data: e })),
         ...state.obstacles.map(o => ({ type: 'OBSTACLE', y: o.y, data: o }))
     ];
@@ -634,6 +770,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     for (const item of renderList) {
         if (item.type === 'PLAYER') {
             drawProceduralSquirrel(ctx, item.data as Player, state.time);
+        } else if (item.type === 'COMPANION') {
+            // Draw companion smaller
+            ctx.save();
+            ctx.scale(0.7, 0.7); // 70% size
+            drawProceduralSquirrel(ctx, item.data as Player, state.time);
+            ctx.restore();
         } else if (item.type === 'OBSTACLE') {
             drawProceduralObstacle(ctx, item.data as Entity);
         } else if (item.type === 'ENEMY') {
@@ -670,8 +812,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
     }
 
-    // 5. Projectiles
+    // 5. Projectiles (Flying)
     for (const p of state.projectiles) {
+        if (p.weaponType === 'SAP_PUDDLE') continue; // Rendered below
+
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.rotation || 0);
@@ -685,8 +829,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              } else {
                  drawPeanut(ctx, p.radius);
              }
+        } else if (p.weaponType === 'CROW_AURA') {
+             drawCrow(ctx, p, state.time);
         } else if (p.weaponType === 'ACORN_CANNON') {
-             drawAcorn(ctx, p.radius, true); // Bomb acorn
+             drawAcorn(ctx, p.radius * 0.7, true); // Bomb acorn, slightly smaller visuals to see field
         } else if (p.weaponType === 'PINE_NEEDLE') {
              ctx.fillStyle = '#2F855A';
              ctx.fillRect(-p.radius*2, -1, p.radius*4, 2);
@@ -745,6 +891,117 @@ function shadeColor(color: string, percent: number) {
 function pseudoRandom(seed: number) {
     let x = Math.sin(seed++) * 10000;
     return x - Math.floor(x);
+}
+
+function drawCrow(ctx: CanvasRenderingContext2D, p: Projectile, time: number) {
+    ctx.save();
+    ctx.scale(1.5, 1.5); // Make bigger
+    // Animation based on time
+    const flap = Math.sin(time * 0.5) * 5;
+    
+    ctx.fillStyle = '#1a202c'; // Black-ish body
+    
+    // Body
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 8, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Wings
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(5, -10 + flap, 12, -2 + flap/2); // Right wing tip
+    ctx.lineTo(5, 0);
+    ctx.fill();
+    
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(5, 10 - flap, 12, 2 - flap/2); // Left wing tip
+    ctx.lineTo(5, 0);
+    ctx.fill();
+    
+    // Head
+    ctx.beginPath();
+    ctx.arc(6, 0, 3, 0, Math.PI*2);
+    ctx.fill();
+    
+    // Beak
+    ctx.fillStyle = '#ECC94B';
+    ctx.beginPath();
+    ctx.moveTo(8, -1);
+    ctx.lineTo(12, 0);
+    ctx.lineTo(8, 1);
+    ctx.fill();
+    
+    // Glowing Eyes
+    ctx.fillStyle = 'red'; 
+    ctx.beginPath();
+    ctx.arc(7, -1, 1, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(7, 1, 1, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawDrop(ctx: CanvasRenderingContext2D, d: Drop, time: number) {
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    
+    // Bobbing animation
+    const bob = Math.sin(time * 0.1) * 3;
+    ctx.translate(0, bob);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(0, 10 - bob, 5, 2, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    if (d.kind === 'XP') {
+        // Blue Gem
+        ctx.fillStyle = '#4299e1';
+        ctx.beginPath();
+        ctx.moveTo(0, -8);
+        ctx.lineTo(6, 0);
+        ctx.lineTo(0, 8);
+        ctx.lineTo(-6, 0);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.beginPath();
+        ctx.moveTo(0, -8);
+        ctx.lineTo(3, -2);
+        ctx.lineTo(0, 0);
+        ctx.lineTo(-3, -2);
+        ctx.fill();
+        
+        // Sparkle
+        if (Math.random() < 0.05) {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(Math.random()*10-5, Math.random()*10-5, 2, 2);
+        }
+
+    } else if (d.kind === 'GOLD') {
+        // Golden Peanut
+        drawPeanut(ctx, 8); // Reuse peanut drawer but smaller
+        
+    } else if (d.kind === 'HEALTH_PACK') {
+        // Medkit / Heart
+        ctx.fillStyle = '#E53E3E'; // Red Box
+        ctx.fillRect(-6, -6, 12, 12);
+        ctx.strokeStyle = '#742A2A';
+        ctx.strokeRect(-6, -6, 12, 12);
+        
+        // White Cross
+        ctx.fillStyle = 'white';
+        ctx.fillRect(-2, -4, 4, 8);
+        ctx.fillRect(-4, -2, 8, 4);
+    }
+
+    ctx.restore();
 }
 
 function drawAcorn(ctx: CanvasRenderingContext2D, radius: number, isBomb = false) {
@@ -832,6 +1089,67 @@ function drawPeanut(ctx: CanvasRenderingContext2D, radius: number) {
         ctx.arc(x, y, 1.5, 0, Math.PI*2);
         ctx.fill();
     }
+}
+
+function drawSapPuddle(ctx: CanvasRenderingContext2D, radius: number, time: number) {
+    ctx.save();
+    // Wobble radius for alive feel
+    const wobble = Math.sin(time * 0.1) * 2;
+    const r = radius + wobble;
+    
+    // Gradient for liquid look
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
+    grad.addColorStop(0, 'rgba(236, 201, 75, 0.9)'); // Center lighter
+    grad.addColorStop(0.7, 'rgba(214, 158, 46, 0.8)'); // Body amber
+    grad.addColorStop(1, 'rgba(180, 83, 9, 0.0)'); // Soft edge
+
+    ctx.fillStyle = grad;
+    
+    // Irregular path
+    ctx.beginPath();
+    const points = 8;
+    for (let i = 0; i <= points; i++) {
+        const angle = (i / points) * Math.PI * 2;
+        // Vary radius per point based on time and index for wobbly blob shape
+        const rad = r + Math.sin(i * 3 + time * 0.1) * (radius * 0.2);
+        const x = Math.cos(angle) * rad;
+        const y = Math.sin(angle) * rad;
+        if (i===0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    
+    // Smooth it
+    ctx.lineJoin = 'round';
+    ctx.fill();
+
+    // Bubbles
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    for(let j=0; j<3; j++) {
+        const speed = 0.05 + (j*0.01);
+        const offset = j * 100;
+        const t = (time * speed + offset);
+        const cycle = t % 10; // 0-10 lifecycle
+        
+        if (cycle < 8) { // Visible part
+            const bubbleR = (cycle / 8) * (radius * 0.3); // Grow
+            const bx = Math.sin(t) * (radius * 0.4);
+            const by = Math.cos(t * 0.7) * (radius * 0.4);
+            
+            ctx.beginPath();
+            ctx.arc(bx, by, bubbleR, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Highlight
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(bx - bubbleR*0.3, by - bubbleR*0.3, bubbleR*0.2, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; // Reset
+        }
+    }
+
+    ctx.restore();
 }
 
 function drawProceduralObstacle(ctx: CanvasRenderingContext2D, obs: Entity) {
