@@ -18,8 +18,19 @@ export type AppState = 'LOADING' | 'SAVE_SELECT' | 'MENU' | 'BASE_UPGRADES' | 'G
 
 export type StageDuration = 'STANDARD' | 'LONG' | 'EPIC';
 
+export type DamageType = 'PHYSICAL' | 'COLD' | 'FIRE' | 'POISON' | 'WIND';
+export type StatusEffectType = 'SLOW' | 'FREEZE' | 'BURN';
+
+export interface StatusEffect {
+  type: StatusEffectType;
+  duration: number; // Frames
+  power: number; // Slow: 0-1 percentage, Burn: damage per tick
+  tickTimer?: number; // For DoTs
+  sourceId?: string; // To prevent stacking from same source if needed
+}
+
 export interface Weapon {
-  type: 'NUT_THROW' | 'CROW_AURA' | 'ACORN_CANNON' | 'FEATHER_STORM' | 'PINE_NEEDLE' | 'SAP_PUDDLE' | 'BOOMERANG';
+  type: 'NUT_THROW' | 'CROW_AURA' | 'ACORN_CANNON' | 'FEATHER_STORM' | 'PINE_NEEDLE' | 'SAP_PUDDLE' | 'BOOMERANG' | 'NUT_STORM' | 'NUT_BARRAGE' | 'LEAF_SWARM';
   level: number;
   damage: number;
   cooldown: number;
@@ -28,6 +39,14 @@ export interface Weapon {
   speed: number;
   amount: number;
   duration?: number;
+  // Elemental Props
+  damageType?: DamageType;
+  statusType?: StatusEffectType;
+  statusChance?: number; // 0-1
+  statusPower?: number;
+  statusDuration?: number;
+  // Special movement
+  oscillation?: number;
 }
 
 export interface ActiveAbility {
@@ -72,6 +91,10 @@ export interface Player extends Entity {
   damageBonus?: number;
   cooldownReduction?: number;
   filter?: string;
+  // Dynamic stats calculated per frame
+  currentSpeedBonus?: number;
+  currentDamageBonus?: number;
+  currentCooldownBonus?: number;
 }
 
 export interface Enemy extends Entity {
@@ -81,10 +104,12 @@ export interface Enemy extends Entity {
   damage: number;
   xpValue: number;
   isElite?: boolean;
+  isBoss?: boolean;
   eliteType?: 'DAMAGE' | 'SPEED' | 'TANK';
   velocity: Vector;
   facing?: 'LEFT' | 'RIGHT';
   animationFrame?: number;
+  activeEffects: StatusEffect[];
 }
 
 export interface Particle extends Entity {
@@ -118,13 +143,29 @@ export interface Projectile extends Entity {
   pierce?: number;
   rotation?: number;
   variant?: number;
+  // Elemental Props
+  damageType?: DamageType;
+  statusType?: StatusEffectType;
+  statusChance?: number;
+  statusPower?: number;
+  statusDuration?: number;
+  // Special movement
+  orbitAngle?: number;
+  orbitRadius?: number;
+  oscillation?: number; 
 }
+
+export type CompanionType = 'HEALER' | 'WARRIOR' | 'SCOUT' | 'SNIPER' | 'ARCTIC' | 'DESERT';
 
 export interface Companion extends Entity {
   velocity: Vector;
   facing: 'LEFT' | 'RIGHT';
   secondaryColor?: string;
+  subtype?: CompanionType;
+  abilityTimer: number;
 }
+
+export type GamePhase = 'SURVIVAL' | 'EXTRACTION';
 
 export interface GameState {
   player: Player;
@@ -144,6 +185,8 @@ export interface GameState {
   biome: string;
   mapBounds: { minX: number; maxX: number; minY: number; maxY: number };
   shake: { intensity: number; duration: number };
+  phase: GamePhase;
+  extractionTimer?: number;
 }
 
 export interface SquirrelCharacter {
@@ -163,6 +206,9 @@ export interface SquirrelCharacter {
   magnetRadius?: number;
   maxCompanions?: number;
   revives?: number;
+  // Unlockable Starting Items
+  startingCompanions?: CompanionType[];
+  startingWeapons?: Weapon[];
 }
 
 export interface BaseUpgradeDef {
@@ -175,6 +221,9 @@ export interface BaseUpgradeDef {
   maxLevel: number;
   statKey: string;
   increment: number;
+  // For specialized unlocks
+  companionType?: CompanionType;
+  weaponConfig?: Weapon;
 }
 
 export interface PlayerStats {
@@ -202,7 +251,8 @@ export interface Upgrade {
   description: string;
   rarity: 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
   icon: string;
-  apply: (player: Player) => void;
+  apply: (player: Player, state?: GameState) => void;
+  companionType?: CompanionType;
 }
 
 export interface SettingsMenuProps {

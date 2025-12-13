@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { GameState, Player, Upgrade, SquirrelCharacter, StageDuration, Enemy, Entity, Projectile, Weapon, Drop } from '../types';
-import { INITIAL_GAME_STATE, INITIAL_PLAYER, COLORS } from '../constants';
+import { GameState, Player, Upgrade, SquirrelCharacter, StageDuration, Enemy, Entity, Projectile, Weapon, Drop, StatusEffect, CompanionType } from '../types';
+import { INITIAL_GAME_STATE, INITIAL_PLAYER, COLORS, STAGE_CONFIGS, COMPANION_COLORS } from '../constants';
 import { ALL_UPGRADES } from '../upgrades';
 import { playSound, playMusic, stopMusic } from '../services/soundService';
 import { renderParticles } from '../services/renderService';
@@ -68,6 +68,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   // Constants
   const MAP_LIMIT = 1500;
   const BORDER_THICKNESS = 2000;
+  const SUB_BOSS_INTERVAL = 1800; // 30 seconds
+  const EXTRACTION_TIME_LIMIT = 45 * 60; // 45 seconds
 
   // 1. Initialize Patterns
   useEffect(() => {
@@ -82,14 +84,36 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           gCtx.fillStyle = '#276749'; 
           gCtx.fillRect(0, 0, 512, 512);
           
-          for(let i=0; i<30; i++) {
+          // --- DIRT PATCHES ---
+          // Draw random organic patches of dirt before drawing grass blades
+          for(let i=0; i<15; i++) {
+              const cx = Math.random() * 512;
+              const cy = Math.random() * 512;
+              const patchSize = 50 + Math.random() * 80;
+              
+              // Dirt color (darker, browner green/brown)
+              gCtx.fillStyle = 'rgba(62, 39, 35, 0.4)'; 
+              
+              // Draw blobby shape using overlapping circles
+              for(let j=0; j<8; j++) {
+                  const ox = (Math.random() - 0.5) * patchSize;
+                  const oy = (Math.random() - 0.5) * patchSize;
+                  const r = patchSize * (0.3 + Math.random() * 0.4);
+                  gCtx.beginPath();
+                  gCtx.arc(cx + ox, cy + oy, r, 0, Math.PI*2);
+                  gCtx.fill();
+              }
+          }
+
+          // --- GRASS BLADES ---
+          for(let i=0; i<40; i++) {
               gCtx.fillStyle = 'rgba(40, 30, 20, 0.15)';
               gCtx.beginPath();
               gCtx.arc(Math.random() * 512, Math.random() * 512, 10 + Math.random() * 40, 0, Math.PI*2);
               gCtx.fill();
           }
 
-          for(let i=0; i<12000; i++) {
+          for(let i=0; i<15000; i++) {
               const x = Math.random() * 512;
               const y = Math.random() * 512;
               const len = 3 + Math.random() * 5;
@@ -190,20 +214,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         let type = 'TREE';
         let radius = 30;
         let color = '#2F855A';
-        const variant = Math.floor(Math.random() * 10);
+        let variant = 0;
 
-        if (typeRoll < 0.5) {
+        if (typeRoll < 0.6) {
             type = 'TREE';
             radius = 35 + Math.random() * 35;
-            color = variant < 5 ? '#2F855A' : '#276749';
-        } else if (typeRoll < 0.85) {
+            color = '#2F855A';
+            // Variant Logic: (StripID * 100) + RandomSeed
+            // StripID: 1-4, Seed: 0-99
+            const stripId = 1 + Math.floor(Math.random() * 4);
+            const seed = Math.floor(Math.random() * 100);
+            variant = (stripId * 100) + seed;
+        } else if (typeRoll < 0.9) {
             type = 'BUSH';
             radius = 20 + Math.random() * 20;
             color = '#48BB78';
+            variant = Math.floor(Math.random() * 10);
         } else {
             type = 'ROCK';
             radius = 15 + Math.random() * 15;
             color = '#718096';
+            variant = Math.floor(Math.random() * 10);
         }
 
         newObstacles.push({
@@ -231,6 +262,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         player.maxCompanions = character.maxCompanions || 0;
         player.revives = character.revives || 0;
         player.filter = character.filter;
+        
+        // --- HANDLE ARMORY UNLOCKS ---
+        
+        // 1. Weapons
+        if (character.startingWeapons && character.startingWeapons.length > 0) {
+            character.startingWeapons.forEach(newWep => {
+                const existing = player.weapons.find(w => w.type === newWep.type);
+                if (!existing) {
+                    player.weapons.push(JSON.parse(JSON.stringify(newWep)));
+                }
+            });
+        }
+
+        // 2. Companions
+        if (character.startingCompanions && character.startingCompanions.length > 0) {
+            // Increase cap to accommodate starters + standard gameplay progression
+            player.maxCompanions = Math.max(player.maxCompanions, character.startingCompanions.length);
+            
+            character.startingCompanions.forEach((compType, idx) => {
+                gameStateRef.current.companions.push({
+                    id: `comp-starter-${Date.now()}-${idx}`,
+                    x: player.x + (Math.random() - 0.5) * 60,
+                    y: player.y + (Math.random() - 0.5) * 60,
+                    radius: 12,
+                    type: 'COMPANION',
+                    color: '#FBD38D', 
+                    secondaryColor: COMPANION_COLORS[compType],
+                    facing: 'RIGHT',
+                    velocity: { x: 0, y: 0 },
+                    variant: 0,
+                    subtype: compType,
+                    abilityTimer: 0
+                });
+            });
+        }
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -333,55 +399,113 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     if (!ctx) return;
 
     // --- HIGH DPI SETUP ---
-    // Reset transform to identity (pixels) for clearing
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    // Clear using physical dimensions
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Scale for logic drawing (use logical coordinates)
     const { dpr, width: logicalWidth, height: logicalHeight } = dimensions;
     ctx.scale(dpr, dpr);
-    
     ctx.imageSmoothingEnabled = false;
 
     // --- UPDATE LOGIC ---
 
+    // 0. Calculate Companion Buffs
+    let activeSpeedBonus = 0;
+    let activeDamageBonus = 0;
+    let activeCooldownBonus = 0;
+    
+    // Process Companion Passives (Healing, Buffs)
+    for (const comp of state.companions) {
+        comp.abilityTimer++;
+
+        if (comp.subtype === 'SCOUT') {
+            activeSpeedBonus += 0.50; // +50% Speed per Scout
+        } else if (comp.subtype === 'WARRIOR') {
+            activeDamageBonus += 0.25; // +25% Damage per Warrior
+        } else if (comp.subtype === 'SNIPER') {
+            activeCooldownBonus += 0.35; // +35% Attack Speed (CDR)
+        } else if (comp.subtype === 'HEALER') {
+            // Heal every 5 seconds (300 frames)
+            if (comp.abilityTimer >= 300) {
+                const healAmount = state.player.maxHp * 0.02; // 2% Max HP
+                if (state.player.hp < state.player.maxHp) {
+                    state.player.hp = Math.min(state.player.maxHp, state.player.hp + healAmount);
+                    state.texts.push({
+                        id: `heal-${Date.now()}`,
+                        x: state.player.x,
+                        y: state.player.y - 20,
+                        text: `+${Math.ceil(healAmount)}`,
+                        life: 30,
+                        velocity: { x: 0, y: -1 },
+                        opacity: 1,
+                        color: '#68D391', // Green text
+                        type: 'TEXT',
+                        radius: 0
+                    });
+                }
+                comp.abilityTimer = 0;
+            }
+        } else if (comp.subtype === 'DESERT') {
+            // Burn Aura every 5 seconds
+            if (comp.abilityTimer >= 300) {
+                // Find enemies in radius
+                const range = 200;
+                let hitCount = 0;
+                for (const e of state.enemies) {
+                    if (Math.hypot(e.x - comp.x, e.y - comp.y) < range) {
+                        e.activeEffects.push({
+                            type: 'BURN',
+                            duration: 180, // 3s
+                            power: 5 // 5 dmg per tick
+                        });
+                        hitCount++;
+                    }
+                }
+                if (hitCount > 0) {
+                    // Visual Effect
+                    state.particles.push({
+                        id: `nova-${Date.now()}`,
+                        x: comp.x, y: comp.y,
+                        radius: range,
+                        color: 'rgba(221, 107, 32, 0.3)',
+                        life: 20, maxLife: 20,
+                        type: 'FLASH',
+                        velocity: {x:0, y:0}, scale: 1
+                    });
+                }
+                comp.abilityTimer = 0;
+            }
+        }
+    }
+
     // 1. Player Movement (Keyboard + Touch)
     let dx = 0;
     let dy = 0;
-    
-    // Keyboard
     if (keysPressed.current['w'] || keysPressed.current['arrowup']) dy -= 1;
     if (keysPressed.current['s'] || keysPressed.current['arrowdown']) dy += 1;
     if (keysPressed.current['a'] || keysPressed.current['arrowleft']) dx -= 1;
     if (keysPressed.current['d'] || keysPressed.current['arrowright']) dx += 1;
-    
-    // Touch Joystick Override
     if (touchRef.current.active) {
         dx = touchRef.current.vector.x;
         dy = touchRef.current.vector.y;
     }
 
     if (dx !== 0 || dy !== 0) {
-        // Normalize length if exceeding 1 (mainly for keyboard diagonals)
         const length = Math.sqrt(dx * dx + dy * dy);
         if (length > 1) {
             dx = dx / length;
             dy = dy / length;
         }
-
-        dx *= state.player.speed;
-        dy *= state.player.speed;
         
+        // Apply Speed Modifiers
+        const currentSpeed = state.player.speed * (1 + activeSpeedBonus);
+        
+        dx *= currentSpeed;
+        dy *= currentSpeed;
         let nextX = state.player.x + dx;
         let nextY = state.player.y + dy;
 
-        // Obstacle Collision
         for (const obs of state.obstacles) {
             const dist = Math.hypot(nextX - obs.x, nextY - obs.y);
-            // Hitbox slightly smaller than visual radius
             const minDist = state.player.radius + (obs.radius * 0.5); 
-            
             if (dist < minDist) {
                 const angle = Math.atan2(nextY - obs.y, nextX - obs.x);
                 const push = minDist - dist;
@@ -389,7 +513,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 nextY += Math.sin(angle) * push;
             }
         }
-
         state.player.x = nextX;
         state.player.y = nextY;
         state.player.facing = dx > 0 ? 'RIGHT' : (dx < 0 ? 'LEFT' : state.player.facing);
@@ -406,36 +529,45 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // 1.5 Companions (Scurry) Logic
     if (state.companions.length < state.player.maxCompanions) {
-        // Spawn companion near player
+        // Generic fill if no specific type assigned, but prioritize specific unlocks first.
+        // Since we spawn unlocks at start, we only fill if unlocks < maxCompanions.
+        // We can random fill or just leave empty slots for in-run upgrades.
+        // For now, let's allow random fills if player bought generic capacity but not specific squirrels.
+        // Cycle through types to ensure variety
+        const companionTypes: CompanionType[] = ['HEALER', 'WARRIOR', 'SCOUT', 'SNIPER'];
+        const typeIndex = state.companions.length % companionTypes.length;
+        const newType = companionTypes[typeIndex];
+        const secondary = COMPANION_COLORS[newType];
+
         state.companions.push({
-            id: `comp-${Date.now()}-${state.companions.length}`,
+            id: `comp-random-${Date.now()}-${state.companions.length}`,
             x: state.player.x + (Math.random() - 0.5) * 50,
             y: state.player.y + (Math.random() - 0.5) * 50,
             radius: 12,
             type: 'COMPANION',
-            color: '#FBD38D', // Lighter squirrel color
-            secondaryColor: '#FEFCBF',
+            color: '#FBD38D', 
+            secondaryColor: secondary,
             facing: 'RIGHT',
             velocity: { x: 0, y: 0 },
-            variant: 0 // Cooldown tracker for shooting
+            variant: 0,
+            subtype: newType,
+            abilityTimer: 0
         });
     }
-
-    // Companion Behavior
+    
+    // Companion Movement & Combat
     for (const comp of state.companions) {
-        // Follow Player
         const dist = Math.hypot(state.player.x - comp.x, state.player.y - comp.y);
         if (dist > 60) {
             const angle = Math.atan2(state.player.y - comp.y, state.player.x - comp.x);
-            comp.x += Math.cos(angle) * (state.player.speed * 0.9);
-            comp.y += Math.sin(angle) * (state.player.speed * 0.9);
+            // Companions also get speed bonus to keep up
+            const compSpeed = state.player.speed * 0.9 * (1 + activeSpeedBonus);
+            comp.x += Math.cos(angle) * compSpeed;
+            comp.y += Math.sin(angle) * compSpeed;
             comp.facing = Math.cos(angle) > 0 ? 'RIGHT' : 'LEFT';
         }
-
-        // Companion Combat (Shoot nuts)
-        if (comp.variant !== undefined) comp.variant--; // Cooldown
+        if (comp.variant !== undefined) comp.variant--;
         if ((comp.variant === undefined || comp.variant <= 0) && state.enemies.length > 0) {
-            // Find nearest enemy
             let nearest = null;
             let minDist = 400;
             for (const e of state.enemies) {
@@ -445,256 +577,222 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     nearest = e;
                 }
             }
-
             if (nearest) {
                 const angle = Math.atan2(nearest.y - comp.y, nearest.x - comp.x);
+                
+                // Determine Companion Damage
+                // Base damage = Player's primary weapon damage
+                const primaryWeapon = state.player.weapons.find(w => w.type === 'NUT_THROW');
+                const baseDmg = (primaryWeapon ? primaryWeapon.damage : 10) * 0.25;
+                
+                // Arctic Squirrel Effect
+                const statusType = comp.subtype === 'ARCTIC' ? 'SLOW' : undefined;
+                const statusChance = comp.subtype === 'ARCTIC' ? 1.0 : 0;
+                const statusPower = comp.subtype === 'ARCTIC' ? 0.3 : 0; // 30% slow
+                const statusDuration = comp.subtype === 'ARCTIC' ? 60 : 0;
+
                 state.projectiles.push({
                     id: `cp-${Date.now()}-${Math.random()}`,
                     x: comp.x, y: comp.y,
                     velocity: { x: Math.cos(angle) * 6, y: Math.sin(angle) * 6 },
-                    damage: 10,
+                    damage: baseDmg,
                     life: 60,
                     source: 'PLAYER',
-                    weaponType: 'NUT_THROW', // Re-use basic nut logic
+                    weaponType: 'NUT_THROW',
                     radius: 4,
-                    color: '#ECC94B',
+                    color: comp.secondaryColor || '#ECC94B',
                     type: 'PROJECTILE',
-                    variant: 0 // Acorn
+                    variant: 0,
+                    damageType: comp.subtype === 'ARCTIC' ? 'COLD' : (comp.subtype === 'DESERT' ? 'FIRE' : 'PHYSICAL'),
+                    statusType,
+                    statusChance,
+                    statusPower,
+                    statusDuration
                 });
-                comp.variant = 90; // 1.5s cooldown
+                comp.variant = 90; // Fire rate
             }
         }
     }
 
-    // 2. Enemy Spawning (DIFFICULTY TWEAKED)
-    const spawnChance = 0.015 + (state.wave * 0.003);
-    const maxEnemies = 25 + (state.wave * 5); 
-
-    if (Math.random() < spawnChance && state.enemies.length < maxEnemies) {
-         const angle = Math.random() * Math.PI * 2;
-         // Use logical dimensions for spawn distance
-         const spawnDist = Math.max(logicalWidth, logicalHeight) / 2 + 100;
-         
-         const enemyTypes = ['ZOMBIE', 'GOBLIN', 'GNOME'];
-         const selectedType = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
-         
-         let color = '#68d391';
-         let speed = 2 + (Math.random() * 0.5);
-         // Increased base HP and scaling
-         let hp = 35 + (state.wave * 5); 
-
-         if (selectedType === 'GOBLIN') {
-             color = '#a0aec0';
-             speed = 2.5;
-             hp = 30 + (state.wave * 4);
-         } else if (selectedType === 'GNOME') {
-             color = '#b83280';
-             speed = 1.5;
-             hp = 80 + (state.wave * 12); // Tanky
-         }
-
-         state.enemies.push({
-             id: `e-${Date.now()}-${Math.random()}`,
+    // 2. Enemy Spawning Logic
+    const maxTime = STAGE_CONFIGS[stageDuration].waveDuration * 60;
+    
+    // Check for Boss Phase / Extraction
+    if (state.time >= maxTime && state.phase === 'SURVIVAL') {
+        state.phase = 'EXTRACTION';
+        state.extractionTimer = EXTRACTION_TIME_LIMIT;
+        
+        // Spawn MAIN BOSS
+        const angle = Math.random() * Math.PI * 2;
+        const spawnDist = Math.max(logicalWidth, logicalHeight) / 2 + 150;
+        state.enemies.push({
+             id: `BOSS-${Date.now()}`,
              x: state.player.x + Math.cos(angle) * spawnDist,
              y: state.player.y + Math.sin(angle) * spawnDist,
-             radius: 12, 
-             color: color,
-             type: selectedType,
-             hp: hp,
-             maxHp: hp,
-             speed: speed,
-             damage: 5,
-             xpValue: 10,
+             radius: 60, 
+             color: '#E53E3E',
+             type: 'GNOME', // Big Gnome
+             isBoss: true,
+             hp: 2000 + (state.wave * 300),
+             maxHp: 2000 + (state.wave * 300),
+             speed: 2.5,
+             damage: 25,
+             xpValue: 1000,
              velocity: { x: 0, y: 0 },
              facing: 'LEFT',
-             animationFrame: 0
-         });
+             animationFrame: 0,
+             activeEffects: []
+        });
+        
+        if (soundEnabled) playSound('WARNING');
+        state.shake = { intensity: 10, duration: 60 };
+    }
+
+    // Normal & Sub-boss Spawning (Only during Survival)
+    if (state.phase === 'SURVIVAL') {
+        const spawnChance = 0.02 + (state.wave * 0.005);
+        const maxEnemies = 40 + (state.wave * 10); // Increased density
+
+        // Sub-boss Check (Every 30 seconds)
+        if (state.time > 0 && state.time % SUB_BOSS_INTERVAL === 0) {
+             const angle = Math.random() * Math.PI * 2;
+             const spawnDist = Math.max(logicalWidth, logicalHeight) / 2 + 100;
+             state.enemies.push({
+                 id: `SUB-${Date.now()}`,
+                 x: state.player.x + Math.cos(angle) * spawnDist,
+                 y: state.player.y + Math.sin(angle) * spawnDist,
+                 radius: 30, 
+                 color: '#D69E2E',
+                 type: 'GOBLIN', // Beefy Goblin
+                 isElite: true,
+                 hp: 500 + (state.wave * 50),
+                 maxHp: 500 + (state.wave * 50),
+                 speed: 3,
+                 damage: 15,
+                 xpValue: 200,
+                 velocity: { x: 0, y: 0 },
+                 facing: 'LEFT',
+                 animationFrame: 0,
+                 activeEffects: []
+             });
+             if (soundEnabled) playSound('WARNING');
+        }
+
+        if (Math.random() < spawnChance && state.enemies.length < maxEnemies) {
+             const angle = Math.random() * Math.PI * 2;
+             const spawnDist = Math.max(logicalWidth, logicalHeight) / 2 + 100;
+             
+             const enemyTypes = ['ZOMBIE', 'GOBLIN', 'GNOME'];
+             const selectedType = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+             
+             let color = '#68d391';
+             let speed = 2 + (Math.random() * 0.5);
+             let hp = 35 + (state.wave * 5); 
+
+             if (selectedType === 'GOBLIN') {
+                 color = '#a0aec0';
+                 speed = 2.5;
+                 hp = 30 + (state.wave * 4);
+             } else if (selectedType === 'GNOME') {
+                 color = '#b83280';
+                 speed = 1.5;
+                 hp = 80 + (state.wave * 12); // Tanky
+             }
+
+             state.enemies.push({
+                 id: `e-${Date.now()}-${Math.random()}`,
+                 x: state.player.x + Math.cos(angle) * spawnDist,
+                 y: state.player.y + Math.sin(angle) * spawnDist,
+                 radius: 12, 
+                 color: color,
+                 type: selectedType,
+                 hp: hp,
+                 maxHp: hp,
+                 speed: speed,
+                 damage: 5,
+                 xpValue: 10,
+                 velocity: { x: 0, y: 0 },
+                 facing: 'LEFT',
+                 animationFrame: 0,
+                 activeEffects: []
+             });
+        }
+    }
+
+    // Extraction Timer Logic
+    if (state.phase === 'EXTRACTION') {
+        state.extractionTimer--;
+        
+        // Loss Condition: Time ran out
+        if (state.extractionTimer <= 0) {
+            onGameOver(state.score, state.time, state.kills, state.collectedNuts, false);
+        }
+        
+        // Win Condition: All enemies dead (including boss)
+        if (state.enemies.length === 0) {
+            onStageComplete(state.player, state.score, state.kills, state.collectedNuts);
+        }
     }
 
     // 3. Enemy Logic
-    for (const e of state.enemies) {
+    for (let i = state.enemies.length - 1; i >= 0; i--) {
+        const e = state.enemies[i];
+        
+        // --- Status Effects Processing ---
+        let speedModifier = 1.0;
+        
+        for (let k = e.activeEffects.length - 1; k >= 0; k--) {
+            const eff = e.activeEffects[k];
+            eff.duration--;
+            
+            if (eff.type === 'SLOW') {
+                speedModifier *= (1 - eff.power);
+            } else if (eff.type === 'FREEZE') {
+                speedModifier = 0;
+            } else if (eff.type === 'BURN') {
+                if (eff.tickTimer === undefined) eff.tickTimer = 0;
+                eff.tickTimer++;
+                if (eff.tickTimer >= 30) { // Tick every 0.5s (30 frames)
+                    e.hp -= eff.power;
+                    eff.tickTimer = 0;
+                    // Visual pop for dot?
+                }
+            }
+            
+            if (eff.duration <= 0) {
+                e.activeEffects.splice(k, 1);
+            }
+        }
+        
+        // Movement
         const dx = state.player.x - e.x;
         const dy = state.player.y - e.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist > 0) {
-            e.x += (dx/dist) * e.speed;
-            e.y += (dy/dist) * e.speed;
+        
+        const currentSpeed = e.speed * speedModifier;
+        
+        if (dist > 0 && currentSpeed > 0) {
+            e.x += (dx/dist) * currentSpeed;
+            e.y += (dy/dist) * currentSpeed;
         }
         
         if (Math.abs(dx) > 0.1) e.facing = dx > 0 ? 'RIGHT' : 'LEFT';
         if (state.time % 8 === 0) e.animationFrame = ((e.animationFrame || 0) + 1) % 100;
         
-        if (dist < e.radius + state.player.radius && state.player.invincibleTimer <= 0) {
+        // Collision with player
+        const hitDist = e.radius + state.player.radius;
+        if (dist < hitDist && state.player.invincibleTimer <= 0) {
             state.player.hp -= e.damage;
             state.player.invincibleTimer = 30;
             if(soundEnabled) playSound('HIT');
-        }
-    }
-    if (state.player.invincibleTimer > 0) state.player.invincibleTimer--;
-
-    // 4. Weapons & Projectiles
-    
-    // --- SPECIAL: CROW AURA (Persistent) ---
-    const crowWeapon = state.player.weapons.find(w => w.type === 'CROW_AURA');
-    if (crowWeapon) {
-        // Manage Crow Population
-        const existingCrows = state.projectiles.filter(p => p.weaponType === 'CROW_AURA');
-        if (existingCrows.length < crowWeapon.amount) {
-             for(let i=existingCrows.length; i<crowWeapon.amount; i++) {
-                 state.projectiles.push({
-                     id: `crow-${Date.now()}-${i}`,
-                     x: state.player.x,
-                     y: state.player.y,
-                     velocity: { x: 0, y: 0 },
-                     damage: crowWeapon.damage,
-                     life: 999999, // Persistent
-                     source: 'PLAYER',
-                     weaponType: 'CROW_AURA',
-                     radius: 12,
-                     color: 'black',
-                     type: 'PROJECTILE',
-                     variant: i
-                 });
-             }
-        }
-
-        // Update Crow Orbits
-        const crows = state.projectiles.filter(p => p.weaponType === 'CROW_AURA');
-        crows.forEach((p, index) => {
-            const totalCrows = crows.length;
-            const spacing = (Math.PI * 2) / totalCrows;
-            const orbitSpeed = crowWeapon.speed || 0.05;
-            const angle = (state.time * orbitSpeed) + (index * spacing);
-            const orbitRadius = crowWeapon.area;
             
-            p.x = state.player.x + Math.cos(angle) * orbitRadius;
-            p.y = state.player.y + Math.sin(angle) * orbitRadius;
-            p.rotation = angle + (Math.PI / 2); // Face forward along orbit
-            p.damage = crowWeapon.damage * (1 + (state.player.damageBonus || 0));
-        });
-    }
-
-    // --- Update Cooldowns & Fire Other Weapons ---
-    for (const w of state.player.weapons) {
-        if (w.type === 'CROW_AURA') continue; // Handled above
-
-        if (w.cooldownTimer > 0) w.cooldownTimer--;
-        
-        if (w.cooldownTimer <= 0) {
-            // Target Nearest
-            let target: Enemy | null = null;
-            let minDist = 600; // Max Range
-            
-            for(const e of state.enemies) {
-                const d = Math.hypot(e.x - state.player.x, e.y - state.player.y);
-                if (d < minDist) {
-                    minDist = d;
-                    target = e;
-                }
-            }
-
-            if (target) {
-                 const angle = Math.atan2(target.y - state.player.y, target.x - state.player.x);
-                 
-                 // Fire projectiles based on amount
-                 for(let i=0; i<w.amount; i++) {
-                     const spread = (i - (w.amount-1)/2) * 0.2; // 0.2 rad spread
-                     const finalAngle = angle + spread;
-                     
-                     state.projectiles.push({
-                         id: `p-${Date.now()}-${i}`,
-                         x: state.player.x, // SAP_PUDDLE will drop at feet if speed is 0 or target if fired
-                         y: state.player.y,
-                         velocity: {
-                             x: Math.cos(finalAngle) * w.speed,
-                             y: Math.sin(finalAngle) * w.speed
-                         },
-                         damage: w.damage * (1 + (state.player.damageBonus || 0)),
-                         life: w.duration || 60,
-                         source: 'PLAYER',
-                         weaponType: w.type,
-                         radius: w.area,
-                         color: '#D69E2E',
-                         type: 'PROJECTILE',
-                         variant: Math.floor(Math.random() * 10) 
-                     });
-                 }
-                 
-                 if (soundEnabled && w.type !== 'SAP_PUDDLE') playSound('NUT');
-                 
-                 // Reset cooldown
-                 const reduction = state.player.cooldownReduction || 0;
-                 w.cooldownTimer = w.cooldown * (1 - reduction);
+            // Screen shake on big hits
+            if (e.isBoss || e.isElite) {
+                state.shake = { intensity: 5, duration: 10 };
             }
         }
-    }
-
-    // --- Update Projectiles & Collision ---
-    for (let i = state.projectiles.length - 1; i >= 0; i--) {
-        const p = state.projectiles[i];
         
-        // Move projectiles (except CROW_AURA which is moved by orbit logic, and SAP_PUDDLE which stays still)
-        if (p.weaponType !== 'CROW_AURA' && p.weaponType !== 'SAP_PUDDLE') {
-            p.x += p.velocity.x;
-            p.y += p.velocity.y;
-            p.rotation = (p.rotation || 0) + 0.3;
-        }
-        
-        p.life--;
-        
-        let didHit = false;
-        
-        // Check Collisions
-        for (const e of state.enemies) {
-            // Simple circular collision
-            if (Math.hypot(e.x - p.x, e.y - p.y) < (e.radius + p.radius)) {
-                
-                let applyDamage = true;
-                if (p.weaponType === 'CROW_AURA' || p.weaponType === 'SAP_PUDDLE') {
-                    // Periodic damage (every ~20 frames / 0.3s) for sustained zones
-                    if ((state.time + (p.variant || 0) * 10) % 20 !== 0) applyDamage = false;
-                }
-
-                if (applyDamage) {
-                    e.hp -= p.damage;
-                    didHit = true;
-                    
-                    // Knockback
-                    if (p.weaponType !== 'CROW_AURA' && p.weaponType !== 'SAP_PUDDLE') {
-                        const kb = 2;
-                        const angle = Math.atan2(e.y - p.x, e.x - p.x);
-                        e.x += Math.cos(angle) * kb;
-                        e.y += Math.sin(angle) * kb;
-                    }
-
-                    // Hit Effect
-                    if (p.weaponType !== 'SAP_PUDDLE') {
-                        state.particles.push({
-                            id: `hit-${Date.now()}-${Math.random()}`,
-                            x: p.x, y: p.y, radius: 4, color: '#FFF',
-                            life: 5, maxLife: 5, type: 'FLASH', velocity: {x:0, y:0}, scale:1
-                        });
-                    }
-                    
-                    if(soundEnabled && p.weaponType !== 'SAP_PUDDLE') playSound('HIT');
-                }
-                
-                // Break if not piercing
-                if (p.weaponType !== 'CROW_AURA' && p.weaponType !== 'BOOMERANG' && p.weaponType !== 'SAP_PUDDLE') {
-                    if (applyDamage) break; // Single target hit
-                }
-            }
-        }
-
-        // Cleanup (Don't kill crows, puddles or returning boomerangs prematurely)
-        if ((didHit && !['CROW_AURA', 'BOOMERANG', 'SAP_PUDDLE'].includes(p.weaponType || '')) || (p.life <= 0 && p.weaponType !== 'CROW_AURA')) {
-             state.projectiles.splice(i, 1);
-        }
-    }
-
-    // 5. Cleanup Dead Enemies
-    for (let i = state.enemies.length - 1; i >= 0; i--) {
-        const e = state.enemies[i];
+        // Death check (from DoTs etc)
         if (e.hp <= 0) {
              let particleSubtype = 'DEFAULT';
              let particleCount = 6;
@@ -710,6 +808,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              if (e.type === 'GOBLIN') { particleSubtype = 'SCRAP'; particleCount = 8; particleSpeedBase = 4; if(soundEnabled) playSound('EXPLOSION'); }
              else if (e.type === 'ZOMBIE') { particleSubtype = 'GOO'; particleCount = 10; particleSpeedBase = 2.5; if(soundEnabled) playSound('HIT'); }
              else if (e.type === 'GNOME') { particleSubtype = 'DISINTEGRATE'; particleCount = 12; particleSpeedBase = 1.5; if(soundEnabled) playSound('AURA'); }
+
+             // Boss Explosion
+             if (e.isBoss || e.isElite) {
+                 particleCount = 30;
+                 particleSpeedBase = 6;
+                 particleSubtype = 'ELITE_ESSENCE';
+                 state.shake = { intensity: 15, duration: 30 };
+                 if(soundEnabled) playSound('EXPLOSION');
+             }
 
              for(let k=0; k<particleCount; k++) {
                  const angle = Math.random() * Math.PI * 2;
@@ -728,53 +835,256 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
              state.enemies.splice(i, 1);
              state.kills++;
-             state.score += 10;
+             state.score += (e.isBoss ? 1000 : (e.isElite ? 200 : 10));
              state.drops.push({
                  id: `d-${Date.now()}`, x: e.x, y: e.y, radius: 8, type: 'DROP',
-                 color: '#4299e1', kind: 'XP', value: 25
+                 color: '#4299e1', kind: 'XP', value: e.xpValue
              });
         }
     }
+    if (state.player.invincibleTimer > 0) state.player.invincibleTimer--;
 
-    // 5.5 Drops Pickup Logic
-    for (let i = state.drops.length - 1; i >= 0; i--) {
-        const d = state.drops[i];
-        const dx = state.player.x - d.x;
-        const dy = state.player.y - d.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
+    // 4. Weapons & Projectiles
+    // --- SPECIAL: CROW AURA (Persistent) ---
+    const crowWeapon = state.player.weapons.find(w => w.type === 'CROW_AURA');
+    if (crowWeapon) {
+        const existingCrows = state.projectiles.filter(p => p.weaponType === 'CROW_AURA');
+        if (existingCrows.length < crowWeapon.amount) {
+             for(let i=existingCrows.length; i<crowWeapon.amount; i++) {
+                 state.projectiles.push({
+                     id: `crow-${Date.now()}-${i}`,
+                     x: state.player.x,
+                     y: state.player.y,
+                     velocity: { x: 0, y: 0 },
+                     damage: crowWeapon.damage,
+                     life: 999999, // Persistent
+                     source: 'PLAYER',
+                     weaponType: 'CROW_AURA',
+                     radius: 12,
+                     color: 'black',
+                     type: 'PROJECTILE',
+                     variant: i,
+                     damageType: 'PHYSICAL',
+                     statusChance: 0,
+                     statusPower: 0,
+                     statusDuration: 0
+                 });
+             }
+        }
+        const crows = state.projectiles.filter(p => p.weaponType === 'CROW_AURA');
+        crows.forEach((p, index) => {
+            const totalCrows = crows.length;
+            const spacing = (Math.PI * 2) / totalCrows;
+            const orbitSpeed = crowWeapon.speed || 0.05;
+            const angle = (state.time * orbitSpeed) + (index * spacing);
+            const orbitRadius = crowWeapon.area;
+            
+            p.x = state.player.x + Math.cos(angle) * orbitRadius;
+            p.y = state.player.y + Math.sin(angle) * orbitRadius;
+            p.rotation = angle + (Math.PI / 2); 
+            p.damage = crowWeapon.damage * (1 + (state.player.damageBonus || 0) + activeDamageBonus);
+        });
+    }
+
+    // --- Update Cooldowns & Fire Other Weapons ---
+    for (const w of state.player.weapons) {
+        if (w.type === 'CROW_AURA') continue; 
+        if (w.cooldownTimer > 0) w.cooldownTimer--;
         
-        // Magnet
-        if (dist < state.player.magnetRadius) {
-            const pull = 5 + (500 / (dist + 10)); // Stronger closer
-            d.x += (dx / dist) * pull;
-            d.y += (dy / dist) * pull;
+        if (w.cooldownTimer <= 0) {
+            
+            // --- NUT STORM: Random positions in view ---
+            if (w.type === 'NUT_STORM') {
+                for (let i = 0; i < w.amount; i++) {
+                    const viewX = state.player.x - (logicalWidth / 2);
+                    const viewY = state.player.y - (logicalHeight / 2);
+                    // Random target within view
+                    const tx = viewX + Math.random() * logicalWidth;
+                    const ty = viewY + Math.random() * logicalHeight;
+                    
+                    // Start from high up
+                    const startY = ty - 400; 
+                    
+                    state.projectiles.push({
+                        id: `storm-${Date.now()}-${i}`,
+                        x: tx, y: startY,
+                        velocity: { x: 0, y: w.speed }, // Falling down
+                        damage: w.damage * (1 + (state.player.damageBonus || 0) + activeDamageBonus),
+                        life: 60,
+                        source: 'PLAYER',
+                        weaponType: w.type,
+                        radius: w.area,
+                        color: '#4A5568', // Darker storm nut
+                        type: 'PROJECTILE',
+                        damageType: 'PHYSICAL',
+                        statusChance: 0, statusPower: 0, statusDuration: 0
+                    });
+                }
+                const reduction = state.player.cooldownReduction || 0;
+                w.cooldownTimer = w.cooldown * (1 - reduction - activeCooldownBonus);
+            
+            } else {
+                // TARGETING WEAPONS
+                let target: Enemy | null = null;
+                let minDist = 600; 
+                
+                for(const e of state.enemies) {
+                    const d = Math.hypot(e.x - state.player.x, e.y - state.player.y);
+                    if (d < minDist) {
+                        minDist = d;
+                        target = e;
+                    }
+                }
+
+                if (target) {
+                     const angle = Math.atan2(target.y - state.player.y, target.x - state.player.x);
+                     
+                     for(let i=0; i<w.amount; i++) {
+                         let spread = (i - (w.amount-1)/2) * 0.2; 
+                         if (w.type === 'NUT_BARRAGE') spread *= 0.3; // Tighter spread
+                         
+                         const finalAngle = angle + spread;
+                         
+                         // Leaf Swarm Initial Velocity
+                         let vx = Math.cos(finalAngle) * w.speed;
+                         let vy = Math.sin(finalAngle) * w.speed;
+
+                         state.projectiles.push({
+                             id: `p-${Date.now()}-${i}`,
+                             x: state.player.x, 
+                             y: state.player.y,
+                             velocity: { x: vx, y: vy },
+                             // Apply Active Damage Bonus from Warrior Companions
+                             damage: w.damage * (1 + (state.player.damageBonus || 0) + activeDamageBonus),
+                             life: w.duration || 60,
+                             source: 'PLAYER',
+                             weaponType: w.type,
+                             radius: w.area,
+                             color: w.type === 'LEAF_SWARM' ? '#68D391' : '#D69E2E',
+                             type: 'PROJECTILE',
+                             variant: Math.floor(Math.random() * 10),
+                             damageType: w.damageType,
+                             statusType: w.statusType,
+                             statusChance: w.statusChance,
+                             statusPower: w.statusPower,
+                             statusDuration: w.statusDuration,
+                             // Leaf Swarm Special Props
+                             oscillation: w.type === 'LEAF_SWARM' ? (Math.random() > 0.5 ? 1 : -1) : 0
+                         });
+                     }
+                     
+                     if (soundEnabled && w.type !== 'SAP_PUDDLE') playSound('NUT');
+                     
+                     // Apply Cooldown Reductions (Player + Companions)
+                     const reduction = state.player.cooldownReduction || 0;
+                     // Cap reduction at 75% to prevent infinite fire
+                     const totalReduc = Math.min(0.75, reduction + activeCooldownBonus);
+                     w.cooldownTimer = w.cooldown * (1 - totalReduc);
+                }
+            }
+        }
+    }
+
+    // --- Update Projectiles & Collision ---
+    for (let i = state.projectiles.length - 1; i >= 0; i--) {
+        const p = state.projectiles[i];
+        
+        // Projectile Movement
+        if (p.weaponType === 'LEAF_SWARM') {
+            // Spiral / Wavy movement
+            const speed = Math.sqrt(p.velocity.x**2 + p.velocity.y**2);
+            const currentAngle = Math.atan2(p.velocity.y, p.velocity.x);
+            // Oscillate angle
+            const newAngle = currentAngle + (Math.sin(state.time * 0.2) * 0.1 * (p.oscillation || 1));
+            
+            p.velocity.x = Math.cos(newAngle) * speed;
+            p.velocity.y = Math.sin(newAngle) * speed;
+            
+            p.x += p.velocity.x;
+            p.y += p.velocity.y;
+            p.rotation = (p.rotation || 0) + 0.2;
+        } else if (p.weaponType !== 'CROW_AURA' && p.weaponType !== 'SAP_PUDDLE') {
+            p.x += p.velocity.x;
+            p.y += p.velocity.y;
+            p.rotation = (p.rotation || 0) + 0.3;
         }
         
-        // Collection
-        if (dist < state.player.radius + d.radius) {
-            if (d.kind === 'XP') {
-                state.player.xp += d.value;
-            } else if (d.kind === 'GOLD') {
-                state.collectedNuts += d.value;
-            } else if (d.kind === 'HEALTH_PACK') {
-                state.player.hp = Math.min(state.player.hp + d.value, state.player.maxHp);
+        p.life--;
+        
+        let didHit = false;
+        
+        // Check Collisions
+        for (const e of state.enemies) {
+            if (Math.hypot(e.x - p.x, e.y - p.y) < (e.radius + p.radius)) {
+                let applyDamage = true;
+                if (p.weaponType === 'CROW_AURA' || p.weaponType === 'SAP_PUDDLE') {
+                    if ((state.time + (p.variant || 0) * 10) % 20 !== 0) applyDamage = false;
+                }
+
+                if (applyDamage) {
+                    e.hp -= p.damage;
+                    didHit = true;
+                    
+                    // Apply Status Effects
+                    if (p.statusType && Math.random() < p.statusChance) {
+                        e.activeEffects.push({
+                            type: p.statusType,
+                            duration: p.statusDuration,
+                            power: p.statusPower
+                        });
+                    }
+
+                    // Knockback
+                    if (p.weaponType !== 'CROW_AURA' && p.weaponType !== 'SAP_PUDDLE' && !e.isBoss) {
+                        // Leaf Swarm has high knockback
+                        const kb = p.weaponType === 'LEAF_SWARM' ? 6 : 2;
+                        const angle = Math.atan2(e.y - p.x, e.x - p.x);
+                        e.x += Math.cos(angle) * kb;
+                        e.y += Math.sin(angle) * kb;
+                    }
+
+                    // Hit Effect
+                    if (p.weaponType !== 'SAP_PUDDLE') {
+                        state.particles.push({
+                            id: `hit-${Date.now()}-${Math.random()}`,
+                            x: p.x, y: p.y, radius: 4, color: '#FFF',
+                            life: 5, maxLife: 5, type: 'FLASH', velocity: {x:0, y:0}, scale:1
+                        });
+                    }
+                    if(soundEnabled && p.weaponType !== 'SAP_PUDDLE') playSound('HIT');
+                }
+                
+                // Penetration Logic
+                if (p.weaponType !== 'CROW_AURA' && p.weaponType !== 'BOOMERANG' && p.weaponType !== 'SAP_PUDDLE' && p.weaponType !== 'NUT_STORM' && p.weaponType !== 'LEAF_SWARM') {
+                    if (applyDamage) break; 
+                }
             }
-            
-            if (soundEnabled) playSound('COLLECT');
-            state.drops.splice(i, 1);
+        }
+
+        if ((didHit && !['CROW_AURA', 'BOOMERANG', 'SAP_PUDDLE', 'NUT_STORM', 'LEAF_SWARM'].includes(p.weaponType || '')) || (p.life <= 0 && p.weaponType !== 'CROW_AURA')) {
+             state.projectiles.splice(i, 1);
         }
     }
 
     // 6. Update Particles
-    for (let i = state.particles.length - 1; i >= 0; i--) {
-        const p = state.particles[i];
-        p.life--;
-        p.x += p.velocity.x;
-        p.y += p.velocity.y;
-        if (p.drift) { p.x += p.drift.x; p.y += p.drift.y; }
-        if (p.life <= 0) state.particles.splice(i, 1);
-    }
+    renderParticles(ctx, state.particles);
 
+    // 6.5 Floating Text
+    for (const t of state.texts) {
+        ctx.save();
+        ctx.fillStyle = t.color || 'white';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(t.text, t.x, t.y);
+        ctx.restore();
+        
+        t.life--;
+        t.y += t.velocity.y;
+        if (t.life <= 0) {
+            state.texts = state.texts.filter(txt => txt.id !== t.id);
+        }
+    }
+    
     // 7. Check Game State
     if (state.player.hp <= 0) {
         onGameOver(state.score, state.time, state.kills, state.collectedNuts, false);
@@ -787,7 +1097,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const shuffled = [...ALL_UPGRADES].sort(() => 0.5 - Math.random());
         const choices = shuffled.slice(0, 3);
         
-        onLevelUp(choices, (u) => u.apply(state.player));
+        onLevelUp(choices, (u) => u.apply(state.player, state));
     }
 
     onStatsUpdate({
@@ -796,31 +1106,31 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         nuts: state.collectedNuts,
         time: state.time,
         wave: state.wave,
-        player: state.player
+        player: state.player,
+        extractionTimer: state.phase === 'EXTRACTION' ? state.extractionTimer : undefined
     });
     state.time++;
 
     // --- RENDER SYSTEM ---
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     // 1. Background
     ctx.fillStyle = COLORS.parkBg;
-    // Use logical dimensions
-    ctx.fillRect(0, 0, logicalWidth, logicalHeight);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     if (grassPatternRef.current) {
         ctx.save();
-        const camX = logicalWidth / 2 - state.player.x;
-        const camY = logicalHeight / 2 - state.player.y;
+        const camX = canvas.width / 2 - state.player.x;
+        const camY = canvas.height / 2 - state.player.y;
         ctx.translate(camX, camY);
         ctx.fillStyle = grassPatternRef.current;
-        // Draw large enough area to cover rotation/movement
-        ctx.fillRect(state.player.x - logicalWidth, state.player.y - logicalHeight, logicalWidth * 2, logicalHeight * 2);
+        ctx.fillRect(state.player.x - canvas.width, state.player.y - canvas.height, canvas.width * 2, canvas.height * 2);
         ctx.restore();
     }
 
     // Camera Transform
     ctx.save();
-    ctx.translate(logicalWidth / 2 - state.player.x, logicalHeight / 2 - state.player.y);
+    ctx.translate(canvas.width / 2 - state.player.x, canvas.height / 2 - state.player.y);
 
     // 2. Borders
     if (borderPatternRef.current) {
@@ -924,7 +1234,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.translate(p.x, p.y);
         ctx.rotate(p.rotation || 0);
         
-        if (p.weaponType === 'NUT_THROW' || !p.weaponType) {
+        if (p.weaponType === 'LEAF_SWARM') {
+             // Leaf shape
+             ctx.fillStyle = '#68D391';
+             ctx.beginPath();
+             ctx.ellipse(0, 0, p.radius, p.radius * 0.5, 0, 0, Math.PI * 2);
+             ctx.fill();
+             ctx.beginPath();
+             ctx.moveTo(-p.radius, 0); ctx.lineTo(p.radius, 0);
+             ctx.strokeStyle = '#2F855A'; ctx.lineWidth = 1; ctx.stroke();
+        } else if (p.weaponType === 'NUT_THROW' || p.weaponType === 'NUT_BARRAGE' || p.weaponType === 'NUT_STORM' || !p.weaponType) {
              const v = p.variant || 0;
              if (v % 3 === 0) {
                  drawAcorn(ctx, p.radius);
@@ -965,12 +1284,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     ctx.restore();
     
     // --- UI OVERLAY RENDER (Joystick) ---
-    // Drawn in logical pixels because context is scaled
     if (touchRef.current.active && touchRef.current.origin && touchRef.current.current) {
         const { origin, current } = touchRef.current;
         const maxDist = 50;
         
-        // Base
         ctx.save();
         ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.beginPath();
@@ -980,24 +1297,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.lineWidth = 2;
         ctx.stroke();
         
-        // Thumbstick
         ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
         ctx.beginPath();
-        
-        // Clamp visually within base
         const dx = current.x - origin.x;
         const dy = current.y - origin.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
         const clamp = Math.min(dist, maxDist);
         const ratio = dist > 0 ? clamp/dist : 0;
-        
         ctx.arc(origin.x + dx * ratio, origin.y + dy * ratio, 20, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }
 
     requestRef.current = requestAnimationFrame(gameLoop);
-  }, [paused, onGameOver, onLevelUp, onStatsUpdate, soundEnabled, dimensions]); // Add dimensions dependency
+  }, [paused, onGameOver, onLevelUp, onStatsUpdate, soundEnabled, dimensions]); 
 
   useEffect(() => {
     requestRef.current = requestAnimationFrame(gameLoop);
@@ -1009,8 +1322,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   return (
     <canvas 
         ref={canvasRef}
-        width={dimensions.width * dimensions.dpr} // Physical pixels
-        height={dimensions.height * dimensions.dpr} // Physical pixels
+        width={dimensions.width * dimensions.dpr} 
+        height={dimensions.height * dimensions.dpr} 
         className="block w-full h-full bg-gray-900 touch-none"
     />
   );
@@ -1031,260 +1344,107 @@ function pseudoRandom(seed: number) {
 
 function drawCrow(ctx: CanvasRenderingContext2D, p: Projectile, time: number) {
     ctx.save();
-    ctx.scale(1.5, 1.5); // Make bigger
-    // Animation based on time
+    ctx.scale(1.5, 1.5); 
     const flap = Math.sin(time * 0.5) * 5;
-    
-    ctx.fillStyle = '#1a202c'; // Black-ish body
-    
-    // Body
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 8, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Wings
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.quadraticCurveTo(5, -10 + flap, 12, -2 + flap/2); // Right wing tip
-    ctx.lineTo(5, 0);
-    ctx.fill();
-    
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.quadraticCurveTo(5, 10 - flap, 12, 2 - flap/2); // Left wing tip
-    ctx.lineTo(5, 0);
-    ctx.fill();
-    
-    // Head
-    ctx.beginPath();
-    ctx.arc(6, 0, 3, 0, Math.PI*2);
-    ctx.fill();
-    
-    // Beak
-    ctx.fillStyle = '#ECC94B';
-    ctx.beginPath();
-    ctx.moveTo(8, -1);
-    ctx.lineTo(12, 0);
-    ctx.lineTo(8, 1);
-    ctx.fill();
-    
-    // Glowing Eyes
+    ctx.fillStyle = '#1a202c'; 
+    ctx.beginPath(); ctx.ellipse(0, 0, 8, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(5, -10 + flap, 12, -2 + flap/2); ctx.lineTo(5, 0); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(5, 10 - flap, 12, 2 - flap/2); ctx.lineTo(5, 0); ctx.fill();
+    ctx.beginPath(); ctx.arc(6, 0, 3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ECC94B'; ctx.beginPath(); ctx.moveTo(8, -1); ctx.lineTo(12, 0); ctx.lineTo(8, 1); ctx.fill();
     ctx.fillStyle = 'red'; 
-    ctx.beginPath();
-    ctx.arc(7, -1, 1, 0, Math.PI*2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(7, 1, 1, 0, Math.PI*2);
-    ctx.fill();
-
+    ctx.beginPath(); ctx.arc(7, -1, 1, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(7, 1, 1, 0, Math.PI*2); ctx.fill();
     ctx.restore();
 }
 
 function drawDrop(ctx: CanvasRenderingContext2D, d: Drop, time: number) {
     ctx.save();
     ctx.translate(d.x, d.y);
-    
-    // Bobbing animation
     const bob = Math.sin(time * 0.1) * 3;
     ctx.translate(0, bob);
-
-    // Shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath();
-    ctx.ellipse(0, 10 - bob, 5, 2, 0, 0, Math.PI*2);
-    ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(0, 10 - bob, 5, 2, 0, 0, Math.PI*2); ctx.fill();
 
     if (d.kind === 'XP') {
-        // Blue Gem
         ctx.fillStyle = '#4299e1';
-        ctx.beginPath();
-        ctx.moveTo(0, -8);
-        ctx.lineTo(6, 0);
-        ctx.lineTo(0, 8);
-        ctx.lineTo(-6, 0);
-        ctx.closePath();
-        ctx.fill();
-        
-        // Highlight
+        ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6, 0); ctx.lineTo(0, 8); ctx.lineTo(-6, 0); ctx.closePath(); ctx.fill();
         ctx.fillStyle = 'rgba(255,255,255,0.4)';
-        ctx.beginPath();
-        ctx.moveTo(0, -8);
-        ctx.lineTo(3, -2);
-        ctx.lineTo(0, 0);
-        ctx.lineTo(-3, -2);
-        ctx.fill();
-        
-        // Sparkle
-        if (Math.random() < 0.05) {
-            ctx.fillStyle = 'white';
-            ctx.fillRect(Math.random()*10-5, Math.random()*10-5, 2, 2);
-        }
-
+        ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(3, -2); ctx.lineTo(0, 0); ctx.lineTo(-3, -2); ctx.fill();
+        if (Math.random() < 0.05) { ctx.fillStyle = 'white'; ctx.fillRect(Math.random()*10-5, Math.random()*10-5, 2, 2); }
     } else if (d.kind === 'GOLD') {
-        // Golden Peanut
-        drawPeanut(ctx, 8); // Reuse peanut drawer but smaller
-        
+        drawPeanut(ctx, 8); 
     } else if (d.kind === 'HEALTH_PACK') {
-        // Medkit / Heart
-        ctx.fillStyle = '#E53E3E'; // Red Box
-        ctx.fillRect(-6, -6, 12, 12);
-        ctx.strokeStyle = '#742A2A';
-        ctx.strokeRect(-6, -6, 12, 12);
-        
-        // White Cross
-        ctx.fillStyle = 'white';
-        ctx.fillRect(-2, -4, 4, 8);
-        ctx.fillRect(-4, -2, 8, 4);
+        ctx.fillStyle = '#E53E3E'; ctx.fillRect(-6, -6, 12, 12);
+        ctx.strokeStyle = '#742A2A'; ctx.strokeRect(-6, -6, 12, 12);
+        ctx.fillStyle = 'white'; ctx.fillRect(-2, -4, 4, 8); ctx.fillRect(-4, -2, 8, 4);
     }
-
     ctx.restore();
 }
 
 function drawAcorn(ctx: CanvasRenderingContext2D, radius: number, isBomb = false) {
     const bodyColor = isBomb ? '#3E2723' : '#CD853F';
     const capColor = isBomb ? '#212121' : '#8B4513';
-    
-    // Body
     ctx.fillStyle = bodyColor;
-    ctx.beginPath();
-    ctx.moveTo(-radius*0.7, 0);
-    ctx.bezierCurveTo(-radius*0.7, radius*1.5, radius*0.7, radius*1.5, radius*0.7, 0); 
-    ctx.fill();
-    
-    // Cap
+    ctx.beginPath(); ctx.moveTo(-radius*0.7, 0); ctx.bezierCurveTo(-radius*0.7, radius*1.5, radius*0.7, radius*1.5, radius*0.7, 0); ctx.fill();
     ctx.fillStyle = capColor;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, Math.PI, 0); 
-    ctx.lineTo(-radius, 0);
-    ctx.fill();
-    
-    // Stem
-    ctx.beginPath();
-    ctx.moveTo(0, -radius);
-    ctx.lineTo(0, -radius - 3);
-    ctx.strokeStyle = '#5D4037';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Shine/Highlight
+    ctx.beginPath(); ctx.arc(0, 0, radius, Math.PI, 0); ctx.lineTo(-radius, 0); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0, -radius); ctx.lineTo(0, -radius - 3); ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 2; ctx.stroke();
     if (!isBomb) {
         ctx.fillStyle = 'rgba(255,255,255,0.2)';
-        ctx.beginPath();
-        ctx.ellipse(-radius*0.3, radius*0.5, radius * 0.2, radius * 0.4, -0.2, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-radius*0.3, radius*0.5, radius * 0.2, radius * 0.4, -0.2, 0, Math.PI * 2); ctx.fill();
     } else {
-        // Fuse spark for cannon
-        ctx.fillStyle = 'orange';
-        ctx.beginPath();
-        ctx.arc(0, -radius - 3, 2, 0, Math.PI*2);
-        ctx.fill();
+        ctx.fillStyle = 'orange'; ctx.beginPath(); ctx.arc(0, -radius - 3, 2, 0, Math.PI*2); ctx.fill();
     }
 }
 
 function drawWalnut(ctx: CanvasRenderingContext2D, radius: number) {
-    ctx.fillStyle = '#C19A6B'; // Light brown
-    ctx.beginPath();
-    ctx.ellipse(0, 0, radius * 0.9, radius, 0, 0, Math.PI*2);
-    ctx.fill();
-    
-    // Crinkles
-    ctx.strokeStyle = '#8D6E63';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(0, -radius);
-    ctx.bezierCurveTo(radius*0.5, -radius*0.5, -radius*0.5, radius*0.5, 0, radius);
-    ctx.stroke();
-    
+    ctx.fillStyle = '#C19A6B'; ctx.beginPath(); ctx.ellipse(0, 0, radius * 0.9, radius, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(0, -radius); ctx.bezierCurveTo(radius*0.5, -radius*0.5, -radius*0.5, radius*0.5, 0, radius); ctx.stroke();
     ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-radius*0.6, -radius*0.3);
-    ctx.quadraticCurveTo(-radius*0.2, 0, -radius*0.6, radius*0.3);
-    ctx.stroke();
-    
-    ctx.beginPath();
-    ctx.moveTo(radius*0.6, -radius*0.3);
-    ctx.quadraticCurveTo(radius*0.2, 0, radius*0.6, radius*0.3);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-radius*0.6, -radius*0.3); ctx.quadraticCurveTo(-radius*0.2, 0, -radius*0.6, radius*0.3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(radius*0.6, -radius*0.3); ctx.quadraticCurveTo(radius*0.2, 0, radius*0.6, radius*0.3); ctx.stroke();
 }
 
 function drawPeanut(ctx: CanvasRenderingContext2D, radius: number) {
-    ctx.fillStyle = '#E1C699'; // Tan
-    
-    // Figure 8 shape
-    ctx.beginPath();
-    ctx.arc(0, -radius*0.5, radius*0.7, 0, Math.PI*2);
-    ctx.arc(0, radius*0.5, radius*0.7, 0, Math.PI*2);
-    ctx.fill();
-    
-    // Texture dots
+    ctx.fillStyle = '#E1C699'; 
+    ctx.beginPath(); ctx.arc(0, -radius*0.5, radius*0.7, 0, Math.PI*2); ctx.arc(0, radius*0.5, radius*0.7, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = 'rgba(139, 69, 19, 0.3)';
     for(let i=0; i<4; i++) {
         const x = (Math.sin(i * 342) * 0.5) * radius;
         const y = (Math.cos(i * 123) * 0.8) * radius;
-        ctx.beginPath();
-        ctx.arc(x, y, 1.5, 0, Math.PI*2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI*2); ctx.fill();
     }
 }
 
 function drawSapPuddle(ctx: CanvasRenderingContext2D, radius: number, time: number) {
     ctx.save();
-    // Wobble radius for alive feel
     const wobble = Math.sin(time * 0.1) * 2;
     const r = radius + wobble;
-    
-    // Gradient for liquid look
     const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
-    grad.addColorStop(0, 'rgba(236, 201, 75, 0.9)'); // Center lighter
-    grad.addColorStop(0.7, 'rgba(214, 158, 46, 0.8)'); // Body amber
-    grad.addColorStop(1, 'rgba(180, 83, 9, 0.0)'); // Soft edge
-
+    grad.addColorStop(0, 'rgba(236, 201, 75, 0.9)'); grad.addColorStop(0.7, 'rgba(214, 158, 46, 0.8)'); grad.addColorStop(1, 'rgba(180, 83, 9, 0.0)');
     ctx.fillStyle = grad;
-    
-    // Irregular path
     ctx.beginPath();
     const points = 8;
     for (let i = 0; i <= points; i++) {
         const angle = (i / points) * Math.PI * 2;
-        // Vary radius per point based on time and index for wobbly blob shape
         const rad = r + Math.sin(i * 3 + time * 0.1) * (radius * 0.2);
-        const x = Math.cos(angle) * rad;
-        const y = Math.sin(angle) * rad;
-        if (i===0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        const x = Math.cos(angle) * rad; const y = Math.sin(angle) * rad;
+        if (i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
-    ctx.closePath();
-    
-    // Smooth it
-    ctx.lineJoin = 'round';
-    ctx.fill();
-
-    // Bubbles
+    ctx.closePath(); ctx.lineJoin = 'round'; ctx.fill();
     ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
     for(let j=0; j<3; j++) {
-        const speed = 0.05 + (j*0.01);
-        const offset = j * 100;
-        const t = (time * speed + offset);
-        const cycle = t % 10; // 0-10 lifecycle
-        
-        if (cycle < 8) { // Visible part
-            const bubbleR = (cycle / 8) * (radius * 0.3); // Grow
-            const bx = Math.sin(t) * (radius * 0.4);
-            const by = Math.cos(t * 0.7) * (radius * 0.4);
-            
-            ctx.beginPath();
-            ctx.arc(bx, by, bubbleR, 0, Math.PI*2);
-            ctx.fill();
-            
-            // Highlight
-            ctx.fillStyle = 'white';
-            ctx.beginPath();
-            ctx.arc(bx - bubbleR*0.3, by - bubbleR*0.3, bubbleR*0.2, 0, Math.PI*2);
-            ctx.fill();
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; // Reset
+        const t = (time * (0.05 + j*0.01) + j*100);
+        const cycle = t % 10; 
+        if (cycle < 8) { 
+            const bubbleR = (cycle / 8) * (radius * 0.3); 
+            const bx = Math.sin(t) * (radius * 0.4); const by = Math.cos(t * 0.7) * (radius * 0.4);
+            ctx.beginPath(); ctx.arc(bx, by, bubbleR, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(bx - bubbleR*0.3, by - bubbleR*0.3, bubbleR*0.2, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         }
     }
-
     ctx.restore();
 }
 
@@ -1294,80 +1454,158 @@ function drawProceduralObstacle(ctx: CanvasRenderingContext2D, obs: Entity) {
     const variant = obs.variant || 0;
     
     // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(0, obs.radius * 0.5, obs.radius * 1.1, obs.radius * 0.4, 0, 0, Math.PI*2);
+    ctx.fill();
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.beginPath();
-    ctx.ellipse(0, obs.radius * 0.4, obs.radius, obs.radius * 0.3, 0, 0, Math.PI*2);
+    ctx.ellipse(0, obs.radius * 0.45, obs.radius * 0.8, obs.radius * 0.3, 0, 0, Math.PI*2);
     ctx.fill();
 
     if (obs.type === 'TREE') {
-        if (variant < 5) {
-            // OAK
-            ctx.fillStyle = '#5D4037';
-            ctx.fillRect(-obs.radius*0.25, -obs.radius*0.6, obs.radius*0.5, obs.radius);
+        const stripId = Math.floor(variant / 100);
+        const seed = variant % 100;
+        const treeSprite = assets[`TREE_${stripId}`];
+        
+        let drawn = false;
+        
+        // Attempt to draw sprite if loaded and valid
+        if (treeSprite && treeSprite.complete && treeSprite.naturalWidth > 0) {
+            // Assume frames in a horizontal strip
+            const frameHeight = treeSprite.naturalHeight;
+            const frameWidth = frameHeight; 
+            const frameCount = Math.floor(treeSprite.naturalWidth / frameWidth);
+            const frameIndex = seed % frameCount;
             
-            const clusters = [
-                {x: 0, y: -obs.radius * 1.5, r: obs.radius * 0.8},
-                {x: -obs.radius * 0.7, y: -obs.radius * 1.2, r: obs.radius * 0.7},
-                {x: obs.radius * 0.7, y: -obs.radius * 1.2, r: obs.radius * 0.7},
-                {x: -obs.radius * 0.4, y: -obs.radius * 0.8, r: obs.radius * 0.6},
-                {x: obs.radius * 0.4, y: -obs.radius * 0.8, r: obs.radius * 0.6},
-            ];
-            for (const c of clusters) {
-                ctx.fillStyle = '#2F855A';
-                ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = '#48BB78';
-                ctx.beginPath(); ctx.arc(c.x, c.y - c.r*0.2, c.r*0.6, 0, Math.PI*2); ctx.fill();
-            }
-        } else {
-            // PINE
-            ctx.fillStyle = '#3E2723';
-            ctx.fillRect(-obs.radius*0.2, -obs.radius*0.5, obs.radius*0.4, obs.radius);
-            ctx.fillStyle = obs.color || '#276749';
-            const layers = 4;
-            const layerHeight = obs.radius * 1.2;
-            for(let i=0; i<layers; i++) {
+            const sx = frameIndex * frameWidth;
+            const sy = 0;
+            const drawWidth = obs.radius * 6;
+            const drawHeight = drawWidth;
+            
+            ctx.drawImage(treeSprite, sx, sy, frameWidth, frameHeight, -drawWidth/2, -drawHeight + (obs.radius * 0.8), drawWidth, drawHeight);
+            drawn = true;
+        }
+        
+        // Fallback Procedural Tree if sprite failed
+        if (!drawn) {
+            // Use modulo to map potentially large variant numbers (100+) down to 0-9 range for fallback logic
+            const fallbackVariant = variant % 10;
+            const trunkColor = fallbackVariant < 5 ? '#5D4037' : '#3E2723';
+            const leafColorBase = fallbackVariant < 5 ? '#2F855A' : '#276749';
+            const leafColorLight = fallbackVariant < 5 ? '#48BB78' : '#2F855A';
+            const leafColorDark = fallbackVariant < 5 ? '#1B4D3E' : '#143628';
+
+            if (fallbackVariant < 5) {
+                // OAK
+                ctx.fillStyle = trunkColor;
                 ctx.beginPath();
-                const jitter = pseudoRandom(variant + i) * 0.2;
-                const width = obs.radius * (1.1 - i*0.25 + jitter);
-                const yBase = -obs.radius*0.2 - (i * layerHeight * 0.5);
-                ctx.moveTo(-width, yBase);
-                ctx.lineTo(-width*0.5, yBase - layerHeight*0.5); 
-                ctx.lineTo(0, yBase - layerHeight); 
-                ctx.lineTo(width*0.5, yBase - layerHeight*0.5); 
-                ctx.lineTo(width, yBase);
+                ctx.moveTo(-obs.radius*0.25, -obs.radius*0.8);
+                ctx.lineTo(-obs.radius*0.3, obs.radius * 0.4);
+                ctx.quadraticCurveTo(-obs.radius*0.5, obs.radius*0.6, -obs.radius*0.6, obs.radius*0.7);
+                ctx.lineTo(obs.radius*0.6, obs.radius*0.7);
+                ctx.quadraticCurveTo(obs.radius*0.5, obs.radius*0.6, obs.radius*0.3, obs.radius * 0.4);
+                ctx.lineTo(obs.radius*0.25, -obs.radius*0.8);
                 ctx.fill();
                 
-                ctx.fillStyle = 'rgba(0,0,0,0.15)';
-                ctx.beginPath();
-                ctx.moveTo(0, yBase - layerHeight);
-                ctx.lineTo(width, yBase);
-                ctx.lineTo(0, yBase);
-                ctx.fill();
-                ctx.fillStyle = obs.color || '#276749';
+                const clusters = [
+                    {x: 0, y: -obs.radius * 1.5, r: obs.radius * 0.9},
+                    {x: -obs.radius * 0.8, y: -obs.radius * 1.2, r: obs.radius * 0.75},
+                    {x: obs.radius * 0.8, y: -obs.radius * 1.2, r: obs.radius * 0.75},
+                    {x: -obs.radius * 0.4, y: -obs.radius * 0.8, r: obs.radius * 0.65},
+                    {x: obs.radius * 0.4, y: -obs.radius * 0.8, r: obs.radius * 0.65},
+                ];
+                
+                for (const c of clusters) {
+                    ctx.fillStyle = leafColorDark;
+                    ctx.beginPath(); ctx.arc(c.x, c.y + c.r*0.15, c.r, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = leafColorBase;
+                    ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = leafColorLight;
+                    ctx.beginPath();
+                    ctx.ellipse(c.x + c.r*0.2, c.y - c.r*0.2, c.r*0.6, c.r*0.5, 0, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            } else {
+                // PINE
+                ctx.fillStyle = trunkColor;
+                ctx.fillRect(-obs.radius*0.2, -obs.radius*0.5, obs.radius*0.4, obs.radius);
+                
+                const layers = 4;
+                const layerHeight = obs.radius * 1.3;
+                
+                for(let i=0; i<layers; i++) {
+                    const jitter = pseudoRandom(fallbackVariant + i) * 0.2;
+                    const width = obs.radius * (1.1 - i*0.25 + jitter);
+                    const yBase = -obs.radius*0.2 - (i * layerHeight * 0.5);
+                    
+                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.beginPath();
+                    ctx.moveTo(0, yBase - layerHeight + 5);
+                    ctx.lineTo(width, yBase + 5);
+                    ctx.lineTo(-width, yBase + 5);
+                    ctx.fill();
+
+                    ctx.fillStyle = leafColorBase;
+                    ctx.beginPath();
+                    ctx.moveTo(0, yBase - layerHeight);
+                    ctx.lineTo(width, yBase);
+                    ctx.lineTo(0, yBase + width*0.1);
+                    ctx.lineTo(-width, yBase);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = 'rgba(0,0,0,0.1)';
+                    ctx.beginPath();
+                    ctx.moveTo(0, yBase - layerHeight);
+                    ctx.lineTo(0, yBase + width*0.1);
+                    ctx.lineTo(-width, yBase);
+                    ctx.fill();
+                }
             }
         }
     } else if (obs.type === 'BUSH') {
         const bushColor = obs.color || '#48BB78';
-        ctx.fillStyle = bushColor;
-        ctx.beginPath(); ctx.arc(0, -5, obs.radius * 0.7, 0, Math.PI*2); ctx.fill();
+        const bushShadow = '#2F855A';
         
-        const subClumps = 3 + (variant % 3);
+        const subClumps = 4 + (variant % 3);
+        
+        ctx.fillStyle = bushShadow;
+        ctx.beginPath(); 
+        ctx.arc(0, -5, obs.radius * 0.7, 0, Math.PI*2); 
+        ctx.fill();
+
         for(let i=0; i<subClumps; i++) {
             const angle = (i / subClumps) * Math.PI * 2;
-            const dist = obs.radius * 0.5;
+            const dist = obs.radius * 0.4;
+            const cx = Math.cos(angle)*dist;
+            const cy = Math.sin(angle)*dist - 5;
+            const cr = obs.radius * 0.5;
+
+            ctx.fillStyle = bushColor;
             ctx.beginPath();
-            ctx.arc(Math.cos(angle)*dist, Math.sin(angle)*dist - 5, obs.radius*0.5, 0, Math.PI*2);
+            ctx.arc(cx, cy, cr, 0, Math.PI*2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#68D391';
+            ctx.beginPath();
+            ctx.arc(cx + cr*0.2, cy - cr*0.2, cr*0.5, 0, Math.PI*2);
             ctx.fill();
         }
+        
         if (variant % 3 !== 0) { 
             ctx.fillStyle = variant % 2 === 0 ? '#E53E3E' : '#ECC94B'; 
             const berryCount = 4 + (variant % 4);
             for(let i=0; i<berryCount; i++) {
-                const r = pseudoRandom(variant * 10 + i) * obs.radius * 0.8;
+                const r = pseudoRandom(variant * 10 + i) * obs.radius * 0.7;
                 const theta = pseudoRandom(variant * 20 + i) * Math.PI * 2;
                 ctx.beginPath(); 
-                ctx.arc(Math.cos(theta)*r, Math.sin(theta)*r - 5, 3, 0, Math.PI*2); 
+                ctx.arc(Math.cos(theta)*r, Math.sin(theta)*r - 5, 4, 0, Math.PI*2); 
                 ctx.fill();
+                ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                ctx.beginPath(); 
+                ctx.arc(Math.cos(theta)*r - 1, Math.sin(theta)*r - 6, 1.5, 0, Math.PI*2); 
+                ctx.fill();
+                ctx.fillStyle = variant % 2 === 0 ? '#E53E3E' : '#ECC94B'; 
             }
         }
     } else if (obs.type === 'ROCK') {
@@ -1382,9 +1620,13 @@ function drawProceduralObstacle(ctx: CanvasRenderingContext2D, obs: Entity) {
         }
         ctx.closePath();
         ctx.fill();
+        
         ctx.strokeStyle = '#4A5568';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 2;
         ctx.stroke();
+        
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fill();
     }
     ctx.restore();
 }
@@ -1475,32 +1717,39 @@ function drawProceduralSquirrel(ctx: CanvasRenderingContext2D, player: Player, t
 function drawProceduralEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy, time: number) {
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
+    if (enemy.isBoss) ctx.scale(3, 3);
+    else if (enemy.isElite) ctx.scale(1.5, 1.5);
+    
     if (enemy.facing === 'LEFT') ctx.scale(-1, 1);
+    
+    // --- Status Effect Tinting (Procedural Fallback) ---
+    const isFrozen = enemy.activeEffects.some(ef => ef.type === 'FREEZE');
+    const isBurning = enemy.activeEffects.some(ef => ef.type === 'BURN');
+    const isSlowed = enemy.activeEffects.some(ef => ef.type === 'SLOW');
+
+    if (isFrozen) {
+        ctx.fillStyle = 'rgba(135, 206, 250, 0.5)'; // Light Blue Overlay
+        ctx.beginPath(); ctx.arc(0, -10, 20, 0, Math.PI * 2); ctx.fill();
+    } else if (isBurning) {
+        ctx.fillStyle = 'rgba(255, 69, 0, 0.3)'; // Orange/Red Overlay
+        ctx.beginPath(); ctx.arc(0, -10, 20, 0, Math.PI * 2); ctx.fill();
+    }
+
     const bounce = Math.abs(Math.sin(time * 0.2)) * 3;
 
     if (enemy.type === 'GOBLIN') {
-        ctx.fillStyle = '#2F855A'; 
-        ctx.fillRect(-10, -20 - bounce, 20, 20);
-        ctx.fillStyle = '#48BB78';
-        ctx.beginPath(); ctx.arc(0, -25 - bounce, 12, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#2F855A'; ctx.fillRect(-10, -20 - bounce, 20, 20);
+        ctx.fillStyle = '#48BB78'; ctx.beginPath(); ctx.arc(0, -25 - bounce, 12, 0, Math.PI*2); ctx.fill();
         ctx.beginPath(); ctx.moveTo(-10, -25 - bounce); ctx.lineTo(-20, -30 - bounce); ctx.lineTo(-10, -20 - bounce); ctx.fill();
-        ctx.fillStyle = 'yellow';
-        ctx.beginPath(); ctx.arc(4, -25 - bounce, 2, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'yellow'; ctx.beginPath(); ctx.arc(4, -25 - bounce, 2, 0, Math.PI*2); ctx.fill();
     } else if (enemy.type === 'GNOME') {
-        ctx.fillStyle = '#3182CE'; 
-        ctx.fillRect(-8, -18 - bounce, 16, 18);
-        ctx.fillStyle = '#F6E05E'; 
-        ctx.beginPath(); ctx.arc(0, -24 - bounce, 10, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#E53E3E'; 
-        ctx.beginPath(); ctx.moveTo(-12, -28 - bounce); ctx.lineTo(12, -28 - bounce); ctx.lineTo(0, -45 - bounce); ctx.fill();
-        ctx.fillStyle = 'white';
-        ctx.beginPath(); ctx.arc(0, -20 - bounce, 10, 0, Math.PI); ctx.fill();
+        ctx.fillStyle = '#3182CE'; ctx.fillRect(-8, -18 - bounce, 16, 18);
+        ctx.fillStyle = '#F6E05E'; ctx.beginPath(); ctx.arc(0, -24 - bounce, 10, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#E53E3E'; ctx.beginPath(); ctx.moveTo(-12, -28 - bounce); ctx.lineTo(12, -28 - bounce); ctx.lineTo(0, -45 - bounce); ctx.fill();
+        ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(0, -20 - bounce, 10, 0, Math.PI); ctx.fill();
     } else {
-        ctx.fillStyle = '#48BB78'; 
-        ctx.beginPath(); ctx.arc(0, -10 - bounce, 11, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#2F855A'; 
-        ctx.fillRect(-8, 0 - bounce, 16, 12);
-        ctx.fillStyle = '#48BB78'; ctx.fillRect(5, -5 - bounce, 12, 4);
+        ctx.fillStyle = '#48BB78'; ctx.beginPath(); ctx.arc(0, -10 - bounce, 11, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#2F855A'; ctx.fillRect(-8, 0 - bounce, 16, 12); ctx.fillStyle = '#48BB78'; ctx.fillRect(5, -5 - bounce, 12, 4);
     }
     ctx.restore();
 }
