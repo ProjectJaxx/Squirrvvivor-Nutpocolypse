@@ -119,10 +119,16 @@ export interface Projectile extends Entity {
   rotation?: number;
 }
 
+export interface Companion extends Entity {
+  velocity: Vector;
+  facing: 'LEFT' | 'RIGHT';
+  secondaryColor?: string;
+}
+
 export interface GameState {
   player: Player;
   enemies: Enemy[];
-  companions: Entity[];
+  companions: Companion[];
   projectiles: Projectile[];
   drops: Drop[];
   particles: Particle[];
