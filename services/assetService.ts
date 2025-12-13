@@ -1,15 +1,17 @@
 
 export const assets: { [key: string]: HTMLImageElement } = {};
 
+const COMMIT_HASH = "4e85d0544806193c91737ea9875d4be02c5ecb28";
+const BASE_URL = `https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/${COMMIT_HASH}/public/assets/sprites`;
+
 const SPRITES = {
     // Green Zombie (SVG Fallback)
     ZOMBIE_SVG: `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgzMiwzMikiPgogICAgPHBhdGggZD0iTS0xNSAtMjAgQy0yNSAtMTAgLTI1IDEwIC0xNSAyMCBMIDE1IDIwIEMgMjUgMTAgMjUgLTEwIDE1IC0yMCBaIiBmaWxsPSIjNjhEMzkxIiBzdHJva2U9IiMyRjg1NUEiIHN0cm9rZS13aWR0aD0iMiIvPjwvZz48L3N2Zz4=`,
     
-    // LPC Sprite Sheets (Using raw.githubusercontent.com for direct image access)
-    // IMPORTANT: These names (GOBLIN, ZOMBIE, GNOME) must match the enemy types in GameCanvas
-    GOBLIN: `https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/main/public/assets/sprites/goblin1-1.png`,
-    ZOMBIE: `https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/main/public/assets/sprites/zombie1-1.png`,
-    GNOME: `https://raw.githubusercontent.com/ProjectJaxx/Squirrvvivor-Nutpocolypse/main/public/assets/sprites/gnome1-1.png`,
+    // LPC Sprite Sheets
+    GOBLIN: `${BASE_URL}/goblin1-1.png`,
+    ZOMBIE: `${BASE_URL}/zombie1-1.png`,
+    GNOME: `${BASE_URL}/gnome1-1.png`,
 };
 
 const loadImage = (src: string): Promise<HTMLImageElement> => {
@@ -21,8 +23,8 @@ const loadImage = (src: string): Promise<HTMLImageElement> => {
             console.warn("Failed to load image, using fallback", src);
             resolve(img); // Resolve anyway to prevent crash, draws procedural fallback
         };
-        // Add cache buster to ensure we get the latest file from GitHub
-        if (src.startsWith('http')) {
+        // Add cache buster only if not using specific commit hash to allow caching
+        if (src.startsWith('http') && !src.includes(COMMIT_HASH)) {
             img.src = `${src}?t=${Date.now()}`;
         } else {
             img.src = src;
