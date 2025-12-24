@@ -1,215 +1,289 @@
 
+export enum GameState {
+  MENU = 'MENU',
+  PLAYING = 'PLAYING',
+  PAUSED = 'PAUSED',
+  LEVEL_UP = 'LEVEL_UP',
+  GAME_OVER = 'GAME_OVER',
+  VICTORY = 'VICTORY',
+  ARMORY = 'ARMORY',
+  CHAR_SELECT = 'CHAR_SELECT',
+  SETTINGS = 'SETTINGS'
+}
 
-export type Vector = { x: number; y: number };
+export enum Difficulty {
+  EASY = 'EASY',
+  HARD = 'HARD',
+  HARDEST = 'HARDEST',
+  INFINITE = 'INFINITE'
+}
 
-export interface Entity {
+export enum EntityType {
+  PLAYER = 'PLAYER',
+  ENEMY = 'ENEMY',
+  PROJECTILE = 'PROJECTILE',
+  XP_GEM = 'XP_GEM',
+  PEANUT = 'PEANUT',
+  CHEST = 'CHEST',
+  SUB_BOSS = 'SUB_BOSS',
+  BOSS = 'BOSS',
+  SCURRY_MINION = 'SCURRY_MINION',
+  OBSTACLE = 'OBSTACLE',
+  DEFENSE_OBJECT = 'DEFENSE_OBJECT'
+}
+
+export interface Character {
   id: string;
+  name: string;
+  sprite: string;
+  head: string;
+  baseStats: {
+    speed: number;
+    hp: number;
+    damage: number;
+    armor: number;
+    knockbackMult?: number;
+    bleedChance?: number;
+    slowChance?: number;
+    extraProjectiles?: number;
+  };
+}
+
+export interface PlayerState {
   x: number;
   y: number;
-  radius: number;
-  color?: string;
-  type: string;
-  rotation?: number;
-  opacity?: number;
-  variant?: number; // Visual variation seed (0-9)
-}
-
-export type AppState = 'LOADING' | 'SAVE_SELECT' | 'MENU' | 'BASE_UPGRADES' | 'GAME' | 'PAUSED' | 'LEVEL_UP' | 'GAME_OVER' | 'STAGE_CLEAR' | 'SETTINGS';
-
-export type StageDuration = 'STANDARD' | 'LONG' | 'EPIC';
-
-export interface Weapon {
-  type: 'NUT_THROW' | 'CROW_AURA' | 'ACORN_CANNON' | 'FEATHER_STORM' | 'PINE_NEEDLE' | 'SAP_PUDDLE' | 'BOOMERANG';
-  level: number;
-  damage: number;
-  cooldown: number;
-  cooldownTimer: number;
-  area: number;
-  speed: number;
-  amount: number;
-  duration?: number;
-}
-
-export interface ActiveAbility {
-  type: string;
-  name: string;
-  cooldown: number;
-  cooldownTimer: number;
-  duration: number;
-  activeTimer: number;
-}
-
-export interface Player extends Entity {
-  maxHp: number;
   hp: number;
+  maxHp: number;
   xp: number;
   level: number;
   nextLevelXp: number;
   speed: number;
-  velocity: Vector;
-  acceleration: number;
-  friction: number;
-  magnetRadius: number;
+  direction: number;
+  frameX: number;
+  animTimer: number;
+  invulnerableTimer: number;
+  intangibleTimer: number;
+  isAttacking?: boolean;
   weapons: Weapon[];
-  activeAbility?: ActiveAbility;
-  facing: 'LEFT' | 'RIGHT';
-  rotation: number;
-  emoji: string;
-  characterId: string;
-  secondaryColor: string;
-  stamina: number;
-  maxStamina: number;
-  dashCooldown: number;
-  isDashing: boolean;
-  dashVector: Vector;
-  invincibleTimer: number;
-  animationState: 'IDLE' | 'RUN';
-  animationFrame: number;
-  frameTimer: number;
-  tailWagOffset: number;
-  maxCompanions: number;
-  revives: number;
-  damageBonus?: number;
-  cooldownReduction?: number;
-  filter?: string;
+  stats: {
+    pickupRange: number;
+    damageMult: number;
+    cooldownMult: number;
+    projectileCount: number;
+    luck: number;
+    lifeSteal: number;
+    knockback: number;
+    armor: number;
+    explodeChance: number;
+    critChance: number;
+  };
+  passives: {
+    raccoonSquad: number;
+    murderOfCrows: number;
+    scurryAura: number;
+  };
+  activeCompanions: CompanionType[];
+  abilityCooldowns: Record<string, number>;
+  // Combat Buffs
+  companionDamageMult?: number;
+  madSquirrelTimer?: number;
 }
 
-export interface Enemy extends Entity {
+export interface Weapon {
+  id: string;
+  name: string;
+  cooldown: number;
+  currentCooldown: number;
+  damage: number;
+  speed: number;
+  duration: number;
+  area: number;
+  projectileSprite?: string;
+  projectileRow?: number;
+  slowFactor?: number;
+  bonusProjectiles?: number;
+  isRolling?: boolean;
+  isExplosive?: boolean;
+}
+
+export interface Enemy {
+  id: string;
+  x: number;
+  y: number;
+  type: EntityType;
+  sprite: string;
   hp: number;
   maxHp: number;
-  speed: number;
   damage: number;
-  xpValue: number;
-  isElite?: boolean;
-  eliteType?: 'DAMAGE' | 'SPEED' | 'TANK';
-  velocity: Vector;
-  facing?: 'LEFT' | 'RIGHT';
-  animationFrame?: number;
+  speed: number;
+  width: number;
+  height: number;
+  isBoss: boolean;
+  frameX: number;
+  frameY: number;
+  animTimer: number;
+  isDead: boolean;
+  deathTimer: number;
+  isRanged?: boolean;
+  attackTimer?: number;
+  projectileType?: 'ROCK' | 'FIRE' | 'ICE' | 'KINETIC' | 'NUT';
+  status: {
+    frozenTimer: number;
+    burnTimer: number;
+    burnDamage?: number;
+    sapTimer?: number;
+    sapSlow?: number;
+    bleedTimer: number;
+    bleedDamage: number;
+    confusedTimer: number;
+  };
 }
 
-export interface Particle extends Entity {
-  velocity: Vector;
+export interface Projectile {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  damage: number;
+  duration: number;
+  sprite?: string;
+  rotation: number;
+  pierce?: number;
+  owner: EntityType.PLAYER | EntityType.ENEMY | EntityType.SCURRY_MINION | EntityType.BOSS | EntityType.SUB_BOSS;
+  isOrbiting?: boolean;
+  orbitRadius?: number;
+  orbitAngle?: number;
+  orbitSpeed?: number;
+  isBoomerang?: boolean;
+  returnState?: 'OUT' | 'RETURN';
+  isExplosive?: boolean;
+  explosionRadius?: number;
+  isZone?: boolean;
+  zoneRadius?: number;
+  slowFactor?: number;
+  isExploding?: boolean;
+  frameX?: number;
+  frameY?: number;
+  maxFrames?: number;
+  animTimer?: number;
+  trailColor?: string;
+  isRolling?: boolean;
+}
+
+export interface Drop {
+  id: string;
+  x: number;
+  y: number;
+  type: EntityType.XP_GEM | EntityType.PEANUT;
+  value: number;
+  sprite?: string;
+}
+
+export interface Chest {
+  id: string;
+  x: number;
+  y: number;
+  isOpened: boolean;
+}
+
+export interface Particle {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
   life: number;
   maxLife: number;
-  scale: number;
-  attachedTo?: string;
-  drift?: Vector;
-  subtype?: 'SCRAP' | 'GOO' | 'DISINTEGRATE' | 'DEFAULT' | 'ELITE_ESSENCE' | 'SMOKE' | 'FLASH';
-}
-
-export interface TextIndicator extends Entity {
-  text: string;
-  life: number;
-  velocity: Vector;
-  opacity: number;
-}
-
-export interface Drop extends Entity {
-  kind: 'XP' | 'GOLD' | 'HEALTH_PACK';
-  value: number;
-}
-
-export interface Projectile extends Entity {
-  velocity: Vector;
-  damage: number;
-  life: number;
-  source: 'PLAYER' | 'ENEMY';
-  weaponType?: string;
-  pierce?: number;
-  rotation?: number;
-}
-
-export interface Companion extends Entity {
-  velocity: Vector;
-  facing: 'LEFT' | 'RIGHT';
-  secondaryColor?: string;
-}
-
-export interface GameState {
-  player: Player;
-  enemies: Enemy[];
-  companions: Companion[];
-  projectiles: Projectile[];
-  drops: Drop[];
-  particles: Particle[];
-  texts: TextIndicator[];
-  obstacles: Entity[];
-  score: number;
-  kills: number;
-  collectedNuts: number;
-  time: number;
-  wave: number;
-  bossWarningTimer: number;
-  biome: string;
-  mapBounds: { minX: number; maxX: number; minY: number; maxY: number };
-  shake: { intensity: number; duration: number };
-}
-
-export interface SquirrelCharacter {
-  id: string;
-  name: string;
-  description: string;
-  hp: number;
-  speed: number;
   color: string;
-  secondaryColor: string;
-  emoji: string;
-  radius: number;
-  filter: string;
-  activeAbility?: ActiveAbility;
-  damageBonus?: number;
-  cooldownReduction?: number;
-  magnetRadius?: number;
-  maxCompanions?: number;
-  revives?: number;
+  size: number;
 }
 
-export interface BaseUpgradeDef {
+export interface Obstacle {
   id: string;
-  name: string;
-  description: string;
-  icon: string;
-  baseCost: number;
-  costMultiplier: number;
-  maxLevel: number;
-  statKey: string;
-  increment: number;
-}
-
-export interface PlayerStats {
-  totalKills: number;
-  totalTimePlayed: number;
-  totalGamesPlayed: number;
-  maxWaveReached: number;
-  highestScore: number;
-  totalDeaths: number;
-  totalNuts: number;
-}
-
-export interface SaveSlot {
-  id: string;
-  name: string;
-  created: number;
-  lastPlayed: number;
-  stats: PlayerStats;
-  permanentUpgrades: Record<string, number>;
+  variant: 'TREE' | 'ROCK' | 'FENCE' | 'FLOWER' | 'PLANT' | 'CONSOLE';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  sprite: string;
+  frameX: number;
+  frameY: number;
+  collisionRadius: number;
+  rotation?: number;
+  hasCollision: boolean;
+  hp?: number;
+  maxHp?: number;
 }
 
 export interface Upgrade {
   id: string;
   name: string;
   description: string;
-  rarity: 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+  rarity: 'Common' | 'Rare' | 'Epic' | 'Legendary';
   icon: string;
-  apply: (player: Player) => void;
+  condition?: (player: PlayerState) => boolean;
+  apply: (player: PlayerState) => void;
 }
 
-export interface SettingsMenuProps {
-  soundEnabled: boolean;
-  toggleSound: () => void;
-  musicEnabled: boolean;
-  toggleMusic: () => void;
-  stageDuration: StageDuration;
-  setStageDuration: (d: StageDuration) => void;
-  onBack: () => void;
+export enum CompanionType {
+  RACER = 'RACER_COMP',
+  DIRT = 'DIRT_COMP',
+  HANGO = 'HANGO_COMP',
+  MR_PEACHES = 'PEACHES_COMP',
+  MAXINE = 'MAXINE_COMP'
+}
+
+export enum AbilityId {
+  BARRAGE = 'barrage',
+  TORNADO = 'tornado',
+  SQUIRRLEY = 'squirrley',
+  PEANUT_BRITTLE = 'peanut_brittle',
+  DRAY_DAY = 'dray_day',
+  VOLTDOM = 'voltdom',
+  WALNUT_ROLLOUT = 'walnut_rollout',
+  TWIGNADO = 'twignado',
+  CUTENESS_OVERLOAD = 'cuteness_overload',
+  MAD_SQUIRREL = 'mad_squirrel'
+}
+
+export interface ActiveAbilityConfig {
+  id: AbilityId;
+  name: string;
+  icon: string;
+  description: string;
+  baseCost: number;
+  baseCooldown: number;
+  baseDuration?: number;
+  baseDamage?: number;
+  color: string;
+}
+
+export interface SaveData {
+  playerName: string;
+  peanuts: number;
+  unlockedCharacters: string[];
+  unlockedCompanions: CompanionType[];
+  upgrades: Record<string, number>;
+  abilityLevels: Record<string, number>;
+  companionLevels: Record<string, number>; 
+  equippedAbilities: string[];
+  equippedCompanions: string[];
+  maxStageReached: number;
+}
+
+export interface GameSettings {
+  masterVolume: number;
+  musicVolume: number;
+  sfxVolume: number;
+  damageNumbers: boolean;
+  screenShake: boolean;
+  showTooltips: boolean;
+}
+
+export interface GameResults {
+  peanuts: number;
+  enemiesKilled: number;
+  bossesKilled: number;
+  duration: number;
 }
